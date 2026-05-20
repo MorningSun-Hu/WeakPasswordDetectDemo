@@ -1,4 +1,8 @@
-"""命令行界面实现"""
+"""命令行界面实现
+
+使用 os.system 清屏，保证跨平台兼容性。
+破解完成后等待用户按回车键再继续，避免结果被立刻清除。
+"""
 
 import sys
 import signal
@@ -10,38 +14,32 @@ from brute_force.enum_rules import RULE_NAMES
 
 
 def format_number(n: int) -> str:
-    """格式化数字，添加千分位分隔符"""
     return "{:,}".format(n)
 
 
 def format_time(seconds: float) -> str:
-    """格式化时间为 HH:MM:SS"""
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
     return "%02d:%02d:%02d" % (hours, minutes, secs)
 
 
-class CLIUI:
-    """命令行界面，实现 UICallback 接口"""
+def clear_screen() -> None:
+    os.system("cls" if os.name == "nt" else "clear")
 
+
+def wait_for_enter() -> None:
+    try:
+        input("\n按回车键继续...")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
+class CLIUI:
     def __init__(self, engine: BruteForceEngine):
         self.engine = engine
-        self._last_line_count = 0
 
-    def on_started(self, target_length: int, worker_count: int) -> None:
-        print("\n" + "=" * 50)
-        print("  弱口令枚举暴力破解演示")
-        print("=" * 50)
-        print("目标密码: %s 位" % ("*" * target_length))
-        print("枚举线程: %d 个运行中" % worker_count)
-        print("按 Ctrl+C 提前终止")
-        print("-" * 50)
-
-    def on_progress(self, status: dict) -> None:
-        # 清屏并重新显示
-        self._clear_lines(self._last_line_count)
-
+    def _build_progress_lines(self, status: dict) -> list:
         lines = []
         for w in status["workers"]:
             rule_name = RULE_NAMES.get(w["rule_id"], "未知")
@@ -49,17 +47,36 @@ class CLIUI:
                 "[Worker %d] 尝试次数: %s    规则: %s"
                 % (w["id"], format_number(w["attempts"]), rule_name)
             )
-
         lines.append("")
         lines.append("累计尝试: %s" % format_number(status["total_attempts"]))
         lines.append("已用时间: %s" % format_time(status["elapsed"]))
+        return lines
 
-        output = "\n".join(lines)
-        print(output)
-        self._last_line_count = len(lines)
+    def on_started(self, target_length: int, worker_count: int) -> None:
+        clear_screen()
+        print("=" * 50)
+        print("  弱口令枚举暴力破解演示")
+        print("=" * 50)
+        print("目标密码: %s 位" % ("*" * target_length))
+        print("枚举线程: %d 个运行中" % worker_count)
+        print("按 Ctrl+C 提前终止")
+        print("-" * 50)
+        print()
+
+    def on_progress(self, status: dict) -> None:
+        lines = self._build_progress_lines(status)
+        # 向上移动对应行数并清除
+        line_count = len(lines)
+        sys.stdout.write("\033[%dA\r" % line_count)
+        for line in lines:
+            sys.stdout.write("\033[K%s\n" % line)
+        sys.stdout.flush()
+        # 将光标移回上方，覆盖下次输出
+        sys.stdout.write("\033[%dA\r" % line_count)
+        sys.stdout.flush()
 
     def on_found(self, password: str, attempts: int, elapsed: float, worker_id: int) -> None:
-        self._clear_lines(self._last_line_count)
+        sys.stdout.write("\033[J")  # 清除下方内容
         print("\n" + "=" * 50)
         print("  破解成功!")
         print("=" * 50)
@@ -68,39 +85,28 @@ class CLIUI:
         print("总尝试次数: %s" % format_number(attempts))
         print("总用时: %s (%.2f 秒)" % (format_time(elapsed), elapsed))
         print("=" * 50)
+        wait_for_enter()
 
     def on_terminated(self, attempts: int, elapsed: float) -> None:
-        self._clear_lines(self._last_line_count)
+        sys.stdout.write("\033[J")
         print("\n" + "=" * 50)
         print("  已提前终止")
         print("=" * 50)
         print("截止尝试次数: %s" % format_number(attempts))
         print("截止用时: %s (%.2f 秒)" % (format_time(elapsed), elapsed))
         print("=" * 50)
+        wait_for_enter()
 
     def on_error(self, message: str) -> None:
         print("\n错误: %s" % message)
 
-    def _clear_lines(self, count: int) -> None:
-        """清除控制台最后 N 行"""
-        if os.name == "nt":
-            # Windows: 使用 cls 不太适合局部清除，简单跳过
-            return
-        # ANSI 转义序列：上移 + 清除行
-        if count > 0:
-            sys.stdout.write("\033[%dA" % count)
-            for _ in range(count):
-                sys.stdout.write("\r\033[K")
-            sys.stdout.flush()
-
 
 def run_cli() -> None:
-    """CLI 主循环"""
+    clear_screen()
     print("弱口令枚举暴力破解演示程序")
     print("Python 3.13 Free-threading 版本")
     print()
 
-    # 注册 Ctrl+C 处理
     engine_ref = [None]
 
     def signal_handler(signum, frame):
@@ -110,7 +116,12 @@ def run_cli() -> None:
     signal.signal(signal.SIGINT, signal_handler)
 
     while True:
-        target = input("\n请输入目标密码 (输入 'quit' 退出): ").strip()
+        try:
+            target = input("请输入目标密码 (输入 'quit' 退出): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n退出程序。")
+            break
+
         if target.lower() in ("quit", "exit", "q"):
             print("退出程序。")
             break
@@ -118,7 +129,6 @@ def run_cli() -> None:
             print("密码不能为空，请重新输入。")
             continue
 
-        # 检查长度，超过8位警告
         if len(target) > 8:
             print("警告：目标密码超过8位，枚举可能需要很长时间。")
             confirm = input("是否继续? (y/n): ").strip().lower()
