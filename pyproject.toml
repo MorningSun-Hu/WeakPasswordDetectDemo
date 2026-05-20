@@ -4,4 +4,6 @@ version = "1.0.0"
 description = "弱口令枚举暴力破解演示程序 (Python 3.13 free-threading)"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "pyinstaller>=6.20.0",
+]

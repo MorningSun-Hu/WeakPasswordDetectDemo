@@ -1,0 +1,92 @@
+"""共享状态模块测试"""
+
+import sys
+import os
+import time
+import threading
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from brute_force.shared_state import SharedState
+
+
+def test_initial_state():
+    state = SharedState(3)
+    assert state.found == False
+    assert state.terminate_flag == False
+    assert state.get_total_attempts() == 0
+    assert state.get_elapsed() == 0.0
+
+
+def test_set_and_get_found_password():
+    state = SharedState(3)
+    state.set_found("test123", 1)
+    assert state.found == True
+    assert state.get_found_password() == "test123"
+    assert state.found_worker_id == 1
+
+
+def test_reset():
+    state = SharedState(3)
+    state.set_found("pass", 0)
+    state.terminate()
+    state.reset(3)
+    assert state.found == False
+    assert state.get_found_password() == ""
+    assert state.terminate_flag == False
+    assert state.found_worker_id == -1
+
+
+def test_add_attempts():
+    state = SharedState(3)
+    state.add_attempts(0, 100)
+    state.add_attempts(1, 200)
+    assert state.get_total_attempts() == 300
+    assert state.attempts[0] == 100
+    assert state.attempts[1] == 200
+
+
+def test_terminate():
+    state = SharedState(3)
+    assert state.is_terminated() == False
+    state.terminate()
+    assert state.is_terminated() == True
+
+
+def test_elapsed_time():
+    state = SharedState(3)
+    state.start_time = time.time() - 5.5
+    elapsed = state.get_elapsed()
+    assert 5.0 <= elapsed <= 6.0
+
+
+def test_thread_safety():
+    """多线程并发写入共享状态，验证锁是否生效"""
+    state = SharedState(3)
+    errors = []
+
+    def worker(worker_id, count):
+        try:
+            for _ in range(count):
+                state.add_attempts(worker_id, 1)
+        except Exception as e:
+            errors.append(str(e))
+
+    threads = [threading.Thread(target=worker, args=(i, 10000)) for i in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(errors) == 0, "并发测试出现异常: %s" % errors
+    assert state.get_total_attempts() == 30000
+
+
+if __name__ == "__main__":
+    test_initial_state()
+    test_set_and_get_found_password()
+    test_reset()
+    test_add_attempts()
+    test_terminate()
+    test_elapsed_time()
+    test_thread_safety()
+    print("shared_state 测试全部通过")
