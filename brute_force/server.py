@@ -7,13 +7,14 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from brute_force.schemas import StartRequest, StartResponse, StatusResponse, StopResponse, ResultResponse
 from brute_force.engine import BruteForceEngine
 from brute_force.callback import WebCallback
 from brute_force.utils import validate_password
+from brute_force.ws_manager import manager
 
 
 # 全局状态
@@ -191,3 +192,30 @@ async def get_result():
         elapsed=result.get("elapsed", 0.0),
         worker_id=result.get("worker_id", -1),
     )
+
+
+@app.websocket("/ws/crack/progress")
+async def ws_progress(websocket: WebSocket):
+    """WebSocket 端点：实时推送进度"""
+    client_id = await manager.connect(websocket)
+    try:
+        while True:
+            callback = _app_state.get("callback")
+            
+            # 优先检查是否有消息需要推送
+            if callback:
+                # 使用 asyncio.to_thread 安全地从同步 Queue 读取
+                msg = await asyncio.to_thread(callback.get_message, timeout=0.1)
+                if msg:
+                    await manager.send_personal_message(client_id, msg)
+                else:
+                    # 无新消息时发送心跳
+                    await manager.send_personal_message(client_id, {"type": "ping"})
+            else:
+                await manager.send_personal_message(client_id, {"type": "status", "data": {"running": False}})
+                await asyncio.sleep(1)
+
+    except WebSocketDisconnect:
+        manager.disconnect(client_id)
+    except Exception as e:
+        manager.disconnect(client_id)
