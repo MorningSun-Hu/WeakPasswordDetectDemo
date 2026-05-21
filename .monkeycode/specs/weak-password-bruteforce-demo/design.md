@@ -549,25 +549,51 @@ Phase 1 是项目的核心基础，实现了完整的枚举引擎、并发调度
 | 12 | Web API 骨架 | `brute_force/web_api.py` | 任务 9 | REST 端点定义、WebSocket 框架（注释标记待实现） |
 | 13 | 单元测试 | `tests/test_*.py` | 任务 1-11 | 枚举规则、共享状态并发安全、引擎流程 |
 
-### Phase 2: Web UI 开发（规划中）
+### Phase 2: Web API 开发（进行中）
 
-Phase 2 将实现 Web 界面，提供可视化的进度监控与任务管理。
-
-| # | 子任务 | 产出文件 | 依赖 | 说明 |
-|---|--------|----------|------|------|
-| 14 | FastAPI 后端服务 | `brute_force/web_api.py` | Phase 1 | REST API + WebSocket 实现 |
-| 15 | 前端界面开发 | `web/` 目录 | 任务 14 | Vue/React 构建可视化进度面板 |
-| 16 | 前后端集成 | 集成配置 | 任务 14、15 | CORS 配置、API 联调、WebSocket 推送 |
-
-### Phase 3: 打包发布（规划中）
-
-Phase 3 将完成产品的最终打包与发布准备。
+Phase 2 将实现完整的后端 Web API 服务，包括 REST 接口与 WebSocket 实时推送。
 
 | # | 子任务 | 产出文件 | 依赖 | 说明 |
 |---|--------|----------|------|------|
-| 17 | 项目文档完善 | `README.md` | Phase 1 | 使用说明、环境要求、构建打包指南 |
-| 18 | PyInstaller 打包 | 打包配置 | Phase 1 | `--onefile` 打包验证、Windows 兼容性测试 |
-| 19 | 发布准备 | `dist/` 目录 | 任务 17、18 | 版本标记、发布说明 |
+| 14 | 基础设施搭建 | `brute_force/server.py`, `pyproject.toml` | Phase 1 | FastAPI/uvicorn 依赖、Pydantic 模型、CORS 配置 |
+| 15 | REST API 实现 | `brute_force/server.py` | 任务 14 | 启动/停止/状态/结果接口、任务锁保护、异步引擎调度 |
+| 16 | WebSocket 实时推送 | `brute_force/server.py` | 任务 14、15 | `WebCallback` 异步推送、连接管理、心跳检测 |
+
+### Phase 3: 前端界面开发（规划中）
+
+Phase 3 将实现可视化 Web 前端，提供用户交互界面。
+
+| # | 子任务 | 产出文件 | 依赖 | 说明 |
+|---|--------|----------|------|------|
+| 17 | 前端界面开发 | `web/` 目录 | Phase 2 | 原生 HTML/JS + Tailwind CDN、进度可视化、任务控制 |
+
+### Phase 4: 集成测试与优化（规划中）
+
+Phase 4 将完成前后端联调、测试与性能优化。
+
+| # | 子任务 | 产出文件 | 依赖 | 说明 |
+|---|--------|----------|------|------|
+| 18 | 集成测试 | `tests/test_web_*.py` | Phase 3 | REST/WebSocket 测试、并发冲突验证、跨域检查 |
+| 19 | 性能优化 | 配置调整 | 任务 18 | WebSocket 推送频率优化、事件循环非阻塞验证 |
+
+### 11.2 Phase 2: Web API 开发（进行中）
+
+Phase 2 基于 FastAPI 实现完整的后端 Web API 服务。
+
+| # | 子任务 | 产出文件 | 依赖 | 说明 |
+|---|--------|----------|------|------|
+| 14 | 基础设施搭建 | `server.py`, `pyproject.toml`, `schemas.py` | Phase 1 | FastAPI/uvicorn 依赖、Pydantic 模型、CORS 配置 |
+| 15 | REST API 实现 | `server.py`, `callback.py` | 任务 14 | 启动/停止/状态/结果接口、任务锁、异步引擎调度 |
+| 16 | WebSocket 实时推送 | `server.py` | 任务 14、15 | `WebCallback` 异步推送、连接管理、心跳检测 |
+
+**Phase 2 技术架构更新**:
+
+- **应用服务器**: FastAPI + Uvicorn (ASGI)
+- **数据验证**: Pydantic v2 (`schemas.py`)
+- **异步架构**: `ThreadPoolExecutor` 运行阻塞的 `BruteForceEngine`，避免阻塞事件循环
+- **并发控制**: `asyncio.Lock` 保护任务状态，防止同时运行多个破解任务
+- **回调适配**: `WebCallback` 实现 `UICallback` 接口，通过队列将引擎事件转发给 API 端点
+- **跨域支持**: CORS 中间件配置 (`allow_origins=["*"]`)
 
 ### 执行依赖图
 
