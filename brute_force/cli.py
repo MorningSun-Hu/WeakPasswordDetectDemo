@@ -1,12 +1,12 @@
 """命令行界面实现 (Windows 优化版)
 
-避免频繁清屏导致画面闪烁。
-使用固定区域刷新进度。
+实现稳定的多行刷新，避免内容重叠和残留。
 """
 
 import sys
 import os
 import time
+import ctypes
 
 from brute_force.engine import BruteForceEngine
 from brute_force.enum_rules import RULE_NAMES
@@ -34,30 +34,58 @@ def wait_for_enter() -> None:
         pass
 
 
+def _enable_ansi():
+    """在 Windows 上启用 ANSI 转义支持"""
+    if os.name != 'nt':
+        return True
+    try:
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        # ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+        if not kernel32.SetConsoleMode(handle, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING):
+            return False
+        return True
+    except Exception:
+        return False
+
+
 class CLIUI:
     def __init__(self, engine: BruteForceEngine):
         self.engine = engine
-        self._progress_start_line = 0  # 记录进度区域的起始行
+        self._last_line_count = 0
 
     def on_started(self, target_length: int, worker_count: int, cpu_count: int, is_process: bool) -> None:
-        # 记录当前行号作为进度区域的起点
+        # 启用 ANSI 支持
+        _enable_ansi()
+
         mode_str = "多进程" if is_process else "多线程"
         
-        print("=" * 50)
-        print("  弱口令枚举暴力破解演示")
-        print("=" * 50)
-        print("运行模式: %s | 物理核心: %d | 并发数: %d" % (mode_str, cpu_count, worker_count))
-        print("目标密码: %s 位" % ("*" * target_length))
-        print("按 Ctrl+C 提前终止")
-        print("-" * 50)
-        print()  # 空行分隔
+        lines = [
+            "=" * 50,
+            "  弱口令枚举暴力破解演示",
+            "=" * 50,
+            "运行模式: %s | 物理核心: %d | 并发数: %d" % (mode_str, cpu_count, worker_count),
+            "目标密码: %s 位" % ("*" * target_length),
+            "按 Ctrl+C 提前终止",
+            "-" * 50,
+            ""
+        ]
         
-        # Windows 控制台行号计算：打印了多少行
-        # 简单起见，我们通过打印固定行来占位，或者使用 ANSI 移动
-        # 这里使用简单的换行策略：进度显示在下方
-        self._progress_start_line = 8  # 大致行号
+        # 使用 sys.stdout.write 确保输出控制精确
+        for line in lines:
+            sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+        
+        # 记录标题行数，用于后续定位（虽然 on_progress 是相对移动）
+        self._header_lines = len(lines)
+        self._last_line_count = 0
 
     def on_progress(self, status: dict) -> None:
+        # 构建进度行
         lines = []
         for w in status["workers"]:
             rule_name = RULE_NAMES.get(w["rule_id"], "未知")
@@ -69,26 +97,29 @@ class CLIUI:
         lines.append("累计尝试: %s" % format_number(status["total_attempts"]))
         lines.append("已用时间: %s" % format_time(status["elapsed"]))
         
-        # 简单覆盖刷新：向上移动，清除并打印
-        line_count = len(lines)
-        if os.name == "nt":
-            # Windows 回退方案：打印 \r 覆盖当前行不太适合多行
-            # 使用 cls 会破坏布局，这里使用 ANSI 转义（Win10+ 支持）
-            sys.stdout.write("\033[%dA\r" % line_count)
-            for line in lines:
-                sys.stdout.write("\033[K%s\n" % line)
-            # 光标移回起始位置以便下次覆盖
-            sys.stdout.write("\033[%dA\r" % line_count)
-        else:
-            sys.stdout.write("\033[%dA\r" % line_count)
-            for line in lines:
-                sys.stdout.write("\033[K%s\n" % line)
-            sys.stdout.write("\033[%dA\r" % line_count)
+        # 刷新逻辑：
+        # 1. 如果上次有打印内容，光标在内容下方。
+        # 2. 向上移动上次打印的行数。
+        # 3. 清除从光标到屏幕末尾的内容（清除旧数据）。
+        # 4. 打印新数据。
+        
+        if self._last_line_count > 0:
+            sys.stdout.write("\033[%dA" % self._last_line_count)
+            sys.stdout.write("\r")  # 回到行首
+            sys.stdout.write("\033[0J")  # 清除从光标到屏幕末尾
+        
+        sys.stdout.write("\n".join(lines) + "\n")
         sys.stdout.flush()
+        
+        self._last_line_count = len(lines)
 
     def on_found(self, password: str, attempts: int, elapsed: float, worker_id: int) -> None:
-        # 清除下方进度内容
-        print("\033[J", end="")
+        # 清除进度区域
+        if self._last_line_count > 0:
+            sys.stdout.write("\033[%dA" % self._last_line_count)
+            sys.stdout.write("\r")
+            sys.stdout.write("\033[0J")
+
         print("\n" + "=" * 50)
         print("  破解成功!")
         print("=" * 50)
@@ -100,7 +131,12 @@ class CLIUI:
         wait_for_enter()
 
     def on_terminated(self, attempts: int, elapsed: float) -> None:
-        print("\033[J", end="")
+        # 清除进度区域
+        if self._last_line_count > 0:
+            sys.stdout.write("\033[%dA" % self._last_line_count)
+            sys.stdout.write("\r")
+            sys.stdout.write("\033[0J")
+            
         print("\n" + "=" * 50)
         print("  已提前终止")
         print("=" * 50)
