@@ -1,20 +1,28 @@
 """Web API 服务入口
 
-提供 FastAPI 应用实例，实现完整的 REST API 与 WebSocket 端点。
+提供 FastAPI 应用实例，实现完整的 REST API 与 WebSocket 端点，
+并挂载前端静态文件服务。
 """
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from brute_force.schemas import StartRequest, StartResponse, StatusResponse, StopResponse, ResultResponse
 from brute_force.engine import BruteForceEngine
 from brute_force.callback import WebCallback
 from brute_force.utils import validate_password
 from brute_force.ws_manager import manager
+
+
+# 静态文件目录路径
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 # 全局状态
@@ -63,6 +71,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 挂载静态文件目录
+if STATIC_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="assets")
+
+
+@app.get("/")
+async def serve_frontend():
+    """服务前端页面"""
+    index_file = STATIC_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(str(index_file))
+    return {"error": "前端页面未找到"}
+
+
+# API 路由
 
 
 @app.post("/api/v1/crack/start", response_model=StartResponse)

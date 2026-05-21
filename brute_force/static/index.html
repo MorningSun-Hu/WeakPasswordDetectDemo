@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>弱口令暴力破解演示（体验）</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 基础样式 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            overflow: hidden;
+            background-color: #000;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        .view {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- 视图容器 -->
+    <div id="view-home" class="view">
+        <!-- 首页内容 - Node 2-1 实现 -->
+    </div>
+    
+    <div id="view-input" class="view hidden">
+        <!-- 用户输入页内容 - Node 2-2 实现 -->
+    </div>
+    
+    <div id="view-cracking" class="view hidden">
+        <!-- 破解过程展示页内容 - Node 3-1 实现 -->
+    </div>
+    
+    <div id="view-success" class="view hidden">
+        <!-- 破解成功展示页内容 - Node 3-5 实现 -->
+    </div>
+    
+    <div id="view-stopped" class="view hidden">
+        <!-- 用户主动停止展示页内容 - Node 3-6 实现 -->
+    </div>
+    
+    <script>
+        // 前端业务逻辑 - Node 2-3 及后续节点实现
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Web UI 已加载');
+        });
+    </script>
+</body>
+</html>
