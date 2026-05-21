@@ -3,6 +3,7 @@
 根据 CPU 物理核心数自动选择多进程或多线程模式。
 """
 
+import glob
 import time
 import os
 import sys
@@ -28,6 +29,14 @@ class BruteForceEngine:
             
         self._running = False
 
+    def _cleanup_old_logs(self) -> None:
+        """清理旧的 worker 日志"""
+        try:
+            for f in glob.glob("worker_*.log"):
+                os.remove(f)
+        except Exception:
+            pass
+
     def _setup_hardware_config(self, requested_count: int):
         """检测硬件并决定运行模式"""
         import psutil
@@ -47,6 +56,9 @@ class BruteForceEngine:
                 self.worker_count = max(1, self.physical_cores - 1)
 
     def start(self, target_password: str) -> None:
+        # 清理旧的 worker 日志，只保留本次运行的
+        self._cleanup_old_logs()
+        
         self.shared_state.reset(worker_count=self.worker_count)
         if self.use_multiprocessing:
             self.shared_state.start_time.value = time.time()
