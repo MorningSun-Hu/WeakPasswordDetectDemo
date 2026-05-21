@@ -13,12 +13,13 @@ class UICallback(Protocol):
     所有 UI 实现（CLI、Web 等）必须实现此接口。
     """
 
-    def on_started(self, target_length: int, worker_count: int) -> None:
+    def on_started(self, target_length: int, worker_count: int, cpu_count: int) -> None:
         """破解任务开始
 
         Args:
             target_length: 目标密码长度（不显示明文）
             worker_count: 工作线程数量
+            cpu_count: CPU 核心数
         """
         ...
 

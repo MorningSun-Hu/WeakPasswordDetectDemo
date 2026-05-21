@@ -12,8 +12,8 @@ class MockCallback:
     def __init__(self):
         self.events = []
 
-    def on_started(self, target_length, worker_count):
-        self.events.append(("started", target_length, worker_count))
+    def on_started(self, target_length, worker_count, cpu_count):
+        self.events.append(("started", target_length, worker_count, cpu_count))
 
     def on_progress(self, status):
         self.events.append(("progress", status))
@@ -33,7 +33,14 @@ def test_engine_found():
     engine = BruteForceEngine(worker_count=3, callback=callback)
     engine.start("7")
     
-    assert ("started", 1, 3) in callback.events
+    # 检查 started 事件，现在有 4 个参数
+    started_events = [e for e in callback.events if e[0] == "started"]
+    assert len(started_events) == 1
+    evt = started_events[0]
+    assert evt[1] == 1  # target_length
+    assert evt[2] == 3  # worker_count
+    assert evt[3] > 0   # cpu_count
+    
     assert any(e[0] == "found" for e in callback.events)
     
     found_event = [e for e in callback.events if e[0] == "found"][0]

@@ -4,6 +4,7 @@
 汇总各线程状态，通过回调接口通知 UI。
 """
 
+import os
 import time
 
 from brute_force.shared_state import SharedState
@@ -13,13 +14,18 @@ from brute_force.thread_manager import ThreadManager
 class BruteForceEngine:
     """核心枚举引擎"""
 
-    DEFAULT_WORKER_COUNT = 3
     PROGRESS_INTERVAL = 0.5  # 进度回调间隔（秒）
 
-    def __init__(self, worker_count: int = DEFAULT_WORKER_COUNT, callback=None):
-        self.worker_count = worker_count
+    def __init__(self, worker_count: int = 0, callback=None):
+        self.cpu_count = os.cpu_count() or 1
+        # 如果未指定线程数，则默认为 CPU 核心数减 1
+        if worker_count <= 0:
+            self.worker_count = max(1, self.cpu_count - 1)
+        else:
+            self.worker_count = worker_count
+
         self.callback = callback
-        self.shared_state = SharedState(worker_count=worker_count)
+        self.shared_state = SharedState(worker_count=self.worker_count)
         self.thread_manager = ThreadManager(self.shared_state)
         self._running = False
 
@@ -34,7 +40,9 @@ class BruteForceEngine:
         self._running = True
 
         if self.callback:
-            self.callback.on_started(len(target_password), self.worker_count)
+            self.callback.on_started(
+                len(target_password), self.worker_count, self.cpu_count
+            )
 
         # 启动工作线程
         self.thread_manager.spawn_workers(

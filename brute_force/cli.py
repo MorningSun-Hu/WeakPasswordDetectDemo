@@ -52,13 +52,13 @@ class CLIUI:
         lines.append("已用时间: %s" % format_time(status["elapsed"]))
         return lines
 
-    def on_started(self, target_length: int, worker_count: int) -> None:
+    def on_started(self, target_length: int, worker_count: int, cpu_count: int) -> None:
         clear_screen()
         print("=" * 50)
         print("  弱口令枚举暴力破解演示")
         print("=" * 50)
+        print("CPU 核心: %d, 使用 %d 个线程并发" % (cpu_count, worker_count))
         print("目标密码: %s 位" % ("*" * target_length))
-        print("枚举线程: %d 个运行中" % worker_count)
         print("按 Ctrl+C 提前终止")
         print("-" * 50)
         print()
