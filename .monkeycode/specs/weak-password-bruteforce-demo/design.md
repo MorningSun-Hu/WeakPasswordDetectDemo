@@ -1,22 +1,29 @@
 # 弱口令枚举暴力破解演示程序 - 技术设计文档
 
+> **状态**: P0-P3 全部完成 + Phase 2 动态并发优化
+> **最后更新**: 2026-05-21
+
 ## 1. 技术选型
 
 | 项目 | 选择 | 说明 |
 |------|------|------|
 | 编程语言 | Python 3.13+ (free-threading) | 无 GIL 版本，支持真正的多线程并发 |
 | 包管理器 | uv | 快速、现代的 Python 包管理器 |
-| 并发方案 | `threading` 标准库 | Python 3.13 free-threading 模式下无 GIL，多线程可真正并行执行 |
-| 进程间通信 | 不适用（单进程多线程） | 线程间共享内存，无需跨进程通信 |
+| 并发方案 | `multiprocessing` (主) / `threading` (降级) | 根据 CPU 物理核心数动态选择：>2 核使用多进程，否则降级为多线程 |
+| 硬件检测 | `psutil` 库 | 获取物理核心数、逻辑线程数 |
+| 进程间通信 | 共享内存 (multiprocessing) / 原生共享 (threading) | 多进程使用 `multiprocessing.Value/Array`，多线程直接共享内存 |
 | 核心引擎 | 与 UI 解耦 | 枚举引擎通过回调/事件接口与 UI 交互 |
-| CLI UI | 控制台刷新 | 命令行交互界面 |
+| CLI UI | 控制台 ANSI 刷新 | Windows 终端支持 VT100 转义序列实现原地刷新 |
 | Web UI（预留） | 异步 API 接口层 | 预留 REST API / WebSocket 接口，供前端调用 |
 
+**为什么使用动态并发策略？**
+- **多进程 (`multiprocessing`)**：在物理核心数 > 2 时优先使用，充分利用多核 CPU 的并行计算能力，规避 Python GIL 的潜在限制（即使在 free-threading 模式下，多进程也能获得更好的隔离性）
+- **多线程 (`threading`)**：在低核设备（≤2 核）上作为降级方案，避免进程创建开销，利用 free-threading 的无 GIL 特性实现轻量并发
+
 **为什么选择 Python 3.13 free-threading？**
-- Python 3.13 提供了 experimental free-threading 构建（通过 `python3.13t` 访问）
 - GIL 被移除，多线程可以真正并行执行 CPU 密集型任务
-- 相比多进程，线程间共享状态更简单，无需序列化
 - 内存开销更低（无需为每个进程复制内存）
+- 在降级到多线程模式时，仍然能获得真正的并发性能
 
 ## 2. 系统架构
 
@@ -38,8 +45,8 @@
 │  ┌────────────────────┼────────────────────┐              │
 │  │              核心枚举引擎                │              │
 │  │  ┌──────────┐  ┌───┴────┐  ┌──────────┐ │              │
-│  │  │BruteForce│─▶│ Thread │─▶│ EnumRules│ │              │
-│  │  │ Engine   │  │ Pool   │  │ Generator│ │              │
+│  │  │BruteForce│─▶│ Worker │─▶│ EnumRules│ │              │
+│  │  │ Engine   │  │Manager │  │ Generator│ │              │
 │  │  └──────────┘  └────────┘  └──────────┘ │              │
 │  └─────────────────────────────────────────┘              │
 │                       │                                    │
@@ -47,6 +54,7 @@
 │           ▼                       ▼                       │
 │     ┌──────────┐           ┌──────────┐                   │
 │     │ Worker 1 │  ...      │ Worker N │                   │
+│     │ Process/ │           │ Process/ │                   │
 │     │ Thread   │           │ Thread   │                   │
 │     └──────────┘           └──────────┘                   │
 └────────────────────────────────────────────────────────────┘
@@ -58,8 +66,9 @@
 
 **职责**：
 - 管理破解任务的生命周期（启动、暂停、终止）
-- 创建工作进程池
-- 汇总各进程状态，通过回调接口通知 UI
+- 根据 CPU 硬件自动选择并发模式（多进程/多线程）
+- 创建工作进程/线程池
+- 汇总各 Worker 状态，通过回调接口通知 UI
 
 **关键类**：
 
@@ -67,32 +76,58 @@
 class BruteForceEngine:
     """核心枚举引擎，与 UI 无关"""
     
-    def __init__(self, worker_count=3, progress_callback=None):
-        self.worker_count = worker_count
-        self.callback = progress_callback  # UI 回调接口
-        self.shared_state = SharedState()
-        self.workers = []
+    def __init__(self, worker_count=0, callback=None):
+        self.worker_count = worker_count  # 0 表示自动检测
+        self.use_multiprocessing = True   # 根据硬件自动调整
+        self.physical_cores = 0
+        self.logical_threads = 0
+        self.callback = callback
+        self.shared_state = create_shared_state(...)
+        self.manager = ProcessManager(...) 或 ThreadManager(...)
+        
+    def _setup_hardware_config(self, requested_count: int):
+        """检测硬件并决定运行模式
+        - 如果物理核心 > 2: 使用 multiprocessing，Worker数 = 核心数 - 1
+        - 如果物理核心 <= 2: 使用 threading，Worker数 = 逻辑线程数 - 1
+        """
         
     def start(self, target_password: str) -> None:
         """启动破解任务"""
         
     def terminate(self) -> None:
-        """终止所有工作进程"""
+        """终止所有工作进程/线程"""
         
     def get_status(self) -> dict:
         """获取当前状态快照（供 Web API 轮询使用）"""
+        
+    def _cleanup_old_logs(self) -> None:
+        """清理旧的 worker 日志文件"""
 ```
 
-### 3.2 线程管理器 (brute_force/thread_manager.py)
+### 3.2 Worker 管理器 (brute_force/process_manager.py & thread_manager.py)
 
 **职责**：
-- 使用 `threading.Thread` 创建工作线程
-- 分配枚举任务区间给各线程
-- 监控线程状态
+- `ProcessManager`: 使用 `multiprocessing.Process` 创建工作进程
+- `ThreadManager`: 使用 `threading.Thread` 创建工作线程
+- 分配枚举任务区间给各 Worker
+- 监控 Worker 状态
 
 **关键类**：
 
 ```python
+class ProcessManager:
+    def __init__(self, shared_state: SharedState):
+        self.shared_state = shared_state
+        
+    def spawn_workers(self, target: str, worker_count: int) -> list:
+        """创建并启动工作进程"""
+        
+    def is_running(self) -> bool:
+        """检查是否有进程存活"""
+        
+    def terminate_all(self) -> None:
+        """终止所有进程"""
+
 class ThreadManager:
     def __init__(self, shared_state: SharedState):
         self.shared_state = shared_state
@@ -100,14 +135,48 @@ class ThreadManager:
     def spawn_workers(self, target: str, worker_count: int) -> list:
         """创建并启动工作线程"""
         
-    def wait_for_completion(self, timeout: float = None) -> bool:
-        """等待任意线程完成或超时"""
+    def is_running(self) -> bool:
+        """检查是否有线程存活"""
         
     def terminate_all(self) -> None:
         """终止所有线程"""
 ```
 
-### 3.3 枚举规则生成器 (brute_force/enum_rules.py)
+### 3.3 共享状态适配 (brute_force/shared_state.py)
+
+**结构**：
+
+```python
+class SharedStateProcessMode:
+    """多进程模式共享状态（使用 multiprocessing.Value/Array）"""
+    def __init__(self, worker_count):
+        self.found = multiprocessing.Value('i', 0)
+        self.attempts = [multiprocessing.Value('i', 0) for _ in range(worker_count)]
+        self.current_rule = [multiprocessing.Value('i', 0) for _ in range(worker_count)]
+        self.start_time = multiprocessing.Value('d', 0.0)
+        self.end_time = multiprocessing.Value('d', 0.0)
+        # ...
+
+class SharedStateThreadMode:
+    """多线程模式共享状态（原生 Python 变量）"""
+    def __init__(self, worker_count):
+        self.found = False
+        self.attempts = [0] * worker_count
+        self.current_rule = [0] * worker_count
+        self.start_time = 0.0
+        self.end_time = 0.0
+        # ...
+
+def create_shared_state(worker_count: int, use_multiprocessing: bool):
+    """工厂函数：根据并发模式返回对应的共享状态实例"""
+```
+
+**设计说明**：
+- **多进程模式**：使用 `multiprocessing.Value/Array` 实现跨进程内存共享，通过 `val.get_lock()` 保护单个值
+- **多线程模式**：直接使用 Python 原生列表和变量，通过 `threading.Lock` 保护关键区
+- **统一接口**：两种模式提供相同的方法签名（`get_total_attempts()`, `get_elapsed()`, `set_found()`, `is_terminated()` 等），使引擎无需关心底层实现
+
+### 3.4 枚举规则生成器 (brute_force/enum_rules.py)
 
 **枚举规则与数量**：
 
@@ -146,64 +215,32 @@ class EnumGenerator:
         """按顺序返回所有枚举规则的迭代器"""
 ```
 
-### 3.4 共享状态 (brute_force/shared_state.py)
-
-**结构**：
-
-```python
-import threading
-
-class SharedState:
-    """多线程共享状态（Python 3.13 free-threading 模式）"""
-    
-    def __init__(self, worker_count: int = 3):
-        # 使用 threading.Lock 保护共享状态
-        self._lock = threading.Lock()
-        
-        # 是否已找到密码
-        self.found = False
-        self.found_password = ""
-        self.found_worker_id = -1
-        
-        # 各线程的尝试次数
-        self.attempts = [0] * worker_count
-        
-        # 终止标志（用户提前终止）
-        self.terminate_flag = False
-        
-        # 各线程当前正在执行的规则编号
-        self.current_rule = [0] * worker_count
-        
-        # 任务开始时间
-        self.start_time = 0.0
-        self.end_time = 0.0
-```
-
-**优势**：
-- 无需 `multiprocessing.Value/Array` 的复杂 API
-- 直接使用 Python 原生数据类型
-- `threading.Lock` 提供轻量级同步
-- 线程间直接共享内存，无需序列化
-
-### 3.5 工作线程 (brute_force/worker.py)
+### 3.5 工作进程/线程入口 (brute_force/worker.py)
 
 **职责**：
 - 按分配的规则枚举密码
 - 比对目标密码
 - 更新共享状态
 - 检查终止信号
+- 生成诊断日志 (`worker_PID.log`)
 
 **关键函数**：
 
 ```python
-def worker_thread(worker_id: int, target: str, 
-                  shared_state: SharedState, rules: list) -> None:
-    """工作线程入口函数"""
+def worker_process(worker_id: int, target: str, shared_state, rule_ids: list) -> None:
+    """工作进程入口函数（多进程模式）"""
     
-def check_and_update(candidate: str, target: str, 
-                     worker_id: int, shared_state: SharedState) -> bool:
-    """比对密码，找到则更新共享状态并返回 True"""
+def worker_thread(worker_id: int, target: str, shared_state, rule_ids: list) -> None:
+    """工作线程入口函数（多线程模式）"""
+
+def assign_rules(worker_id: int, total_workers: int) -> list:
+    """按轮询策略分配规则给 Worker"""
 ```
+
+**Worker 日志机制**：
+- 每个 Worker 启动时立即创建 `worker_PID.log` 文件
+- 记录启动、导入、规则执行、异常等关键步骤
+- 每次任务开始前自动清理旧日志，只保留本次运行文件
 
 ## 4. UI 接口设计
 
@@ -215,7 +252,8 @@ def check_and_update(candidate: str, target: str,
 class UICallback(Protocol):
     """UI 回调接口，CLI 和 Web UI 各自实现"""
     
-    def on_started(self, target_password: str, worker_count: int) -> None:
+    def on_started(self, target_length: int, worker_count: int, 
+                   cpu_count: int, is_process: bool) -> None:
         """破解任务开始"""
         
     def on_progress(self, status: dict) -> None:
@@ -237,16 +275,18 @@ class UICallback(Protocol):
 ```python
 status = {
     "running": True,           # 是否运行中
+    "found": False,            # 是否已找到
     "workers": [
         {
             "id": 0,
             "attempts": 1234567,
-            "current_rule": 1,  # 当前规则编号
+            "rule_id": 1,      # 当前规则编号
         },
         # ...
     ],
     "total_attempts": 3703701,
     "elapsed": 83.5,           # 秒
+    "mode": "process"          # "process" 或 "thread"
 }
 ```
 
@@ -261,6 +301,11 @@ class CLIUI:
     def on_found(self, ...): ...
     def on_terminated(self, ...): ...
 ```
+
+**Windows 终端刷新策略**：
+- 通过 `ctypes` 调用 `SetConsoleMode` 启用 `ENABLE_VIRTUAL_TERMINAL_PROCESSING`
+- 使用 ANSI 转义序列实现多行原地刷新：`\033[nA`（上移）、`\033[0J`（清除到末尾）
+- 避免频繁清屏 (`cls`) 导致闪烁，保持标题区域固定，仅刷新进度区域
 
 ### 4.3 Web API 预留接口 (brute_force/web_api.py)
 
@@ -285,40 +330,57 @@ class WebAPI:
     pass
 ```
 
-## 5. 线程间共享设计
+## 5. 并发间共享设计
 
-### 5.1 共享内存
+### 5.1 多进程模式 (Multiprocessing)
+
+Windows 默认使用 `spawn` 模式创建子进程，需要确保：
+- `main.py` 中包含 `multiprocessing.freeze_support()` 调用
+- Worker 入口代码保护在 `if __name__ == '__main__':` 块中（由引擎内部管理）
+- 传递给子进程的参数必须是可序列化的（pickleable）
+
+```python
+# 主进程创建共享状态
+shared_state = SharedStateProcessMode(worker_count)
+
+# 传递给工作进程（通过 spawn 参数）
+proc = multiprocessing.Process(
+    target=worker_process,
+    args=(worker_id, target, shared_state, rule_ids)
+)
+proc.start()
+```
+
+### 5.2 多线程模式 (Threading)
 
 Python 3.13 free-threading 模式下，所有线程共享同一进程的内存空间：
 
 ```python
 # 主线程创建共享状态
-shared_state = SharedState()
+shared_state = SharedStateThreadMode(worker_count)
 
-# 传递给工作线程（直接引用，无需特殊序列化）
+# 传递给工作线程（直接引用）
 thread = threading.Thread(
     target=worker_thread,
-    args=(worker_id, target, shared_state, assigned_rules)
+    args=(worker_id, target, shared_state, rule_ids)
 )
 thread.start()
 ```
 
-### 5.2 同步机制
+### 5.3 同步机制
 
 ```python
-# 工作线程定期检查终止信号
-if shared_state.found or shared_state.terminate_flag:
+# 工作进程/线程定期检查终止信号
+if shared_state.is_terminated():
     return
 
-# 使用锁保护共享状态更新
-BATCH_SIZE = 10000
-local_count = 0
-for candidate in generator:
-    local_count += 1
-    if local_count >= BATCH_SIZE:
-        with shared_state._lock:
-            shared_state.attempts[worker_id] += local_count
-        local_count = 0
+# 多进程：使用 per-value lock
+with shared_state.attempts[worker_id].get_lock():
+    shared_state.attempts[worker_id].value += count
+
+# 多线程：使用全局 threading.Lock
+with shared_state._lock:
+    shared_state.attempts[worker_id] += count
 ```
 
 ## 6. 进度显示设计
@@ -326,41 +388,53 @@ for candidate in generator:
 ### 6.1 CLI 显示效果
 
 ```
-========================================
+==================================================
   弱口令枚举暴力破解演示
-========================================
-枚举进程: 3 个运行中
+==================================================
+运行模式: 多进程 | 物理核心: 4 | 并发数: 3
+目标密码: *** 位
+按 Ctrl+C 提前终止
+--------------------------------------------------
 
-[Worker 1] 尝试次数: 1,234,567    规则: 纯数字
+[Worker 0] 尝试次数: 1,234,567    规则: 纯数字
+[Worker 1] 尝试次数: 1,234,567    规则: 字母开头+数字
 [Worker 2] 尝试次数: 1,234,567    规则: 数字+字母结尾
-[Worker 3] 尝试次数: 1,234,567    规则: 数字+小写混合
 
 累计尝试: 3,703,701
 已用时间: 00:01:23
-按 Ctrl+C 提前终止
-========================================
 ```
 
 ### 6.2 刷新策略
 
 - 主进程每 500ms 读取共享状态并刷新显示
-- 使用控制台光标定位实现原地刷新
-- Windows 兼容：使用 `os.system('cls')` 或 ANSI 转义序列
+- **Windows 终端优化**：通过 `ctypes` 启用 ANSI 支持，使用 `\033[nA` 上移光标 + `\033[0J` 清除旧内容，实现原地刷新
+- 标题区域固定不动，仅刷新进度区域，避免闪烁
 
-## 7. 提前终止机制
+## 7. 输入约束与提前终止机制
+
+### 7.1 密码输入校验
+
+为确保演示程序的枚举范围可控，对用户输入的密码进行格式校验：
+
+- **允许字符**：仅限 ASCII 字母 (`a-z`, `A-Z`) 和数字 (`0-9`)。
+- **拒绝符号**：如果检测到特殊符号（如 `!@#$%^&*()` 等），程序将拒绝输入并提示：
+  ```text
+  提示：本演示程序仅支持纯字母和数字密码。
+  检测到不支持的符号: '!', '@' ...
+  请重新输入。
+  ```
+- **校验逻辑**：使用 Python `string.ascii_letters` 和 `string.digits` 构建白名单。
+
+### 7.2 提前终止机制
 
 ```python
 import signal
 
 def signal_handler(signum, frame):
     """处理 Ctrl+C"""
-    shared_state.terminate_flag.value = True
+    engine.terminate()
     
 signal.signal(signal.SIGINT, signal_handler)
-# Windows 额外处理
-if os.name == 'nt':
-    import ctypes
-    ctypes.windll.kernel32.SetConsoleCtrlHandler(None, False)
 ```
 
 ## 8. 项目结构
@@ -369,16 +443,17 @@ if os.name == 'nt':
 weak-password-bruteforce/
 ├── pyproject.toml          # uv 项目配置
 ├── README.md
-├── main.py                 # 程序入口
+├── main.py                 # 程序入口 (含 multiprocessing.freeze_support)
 ├── brute_force/
 │   ├── __init__.py
-│   ├── engine.py           # BruteForceEngine 核心引擎
-│   ├── thread_manager.py   # ThreadManager 线程管理
-│   ├── shared_state.py     # SharedState 共享状态
-│   ├── worker.py           # worker_thread 工作线程入口
+│   ├── engine.py           # BruteForceEngine 核心引擎 (动态并发调度)
+│   ├── process_manager.py  # ProcessManager 多进程管理
+│   ├── thread_manager.py   # ThreadManager 多线程管理
+│   ├── shared_state.py     # SharedState 双模式共享状态
+│   ├── worker.py           # worker_process/worker_thread 入口
 │   ├── enum_rules.py       # EnumGenerator 枚举规则
 │   ├── ui_interface.py     # UICallback 接口定义
-│   ├── cli.py              # CLIUI 命令行界面
+│   ├── cli.py              # CLIUI 命令行界面 (ANSI 刷新)
 │   └── web_api.py          # WebAPI 预留接口
 └── tests/
     ├── __init__.py
@@ -394,7 +469,17 @@ weak-password-bruteforce/
 - 最低要求：Python 3.13 (free-threading build)
 - 访问方式：`python3.13t` 或通过 `uv run --python 3.13t`
 
-### 9.2 打包
+### 9.2 多进程支持
+
+Windows 使用 `spawn` 模式创建子进程，必须：
+- `main.py` 中包含 `multiprocessing.freeze_support()` 调用
+- Worker 日志使用文件输出（`worker_PID.log`），避免控制台输出缓冲或丢失
+
+### 9.3 终端 ANSI 支持
+
+通过 `ctypes.WinDLL('kernel32').SetConsoleMode` 启用 VT100 转义序列支持，确保 Win 7/10/11 均能正确刷新界面。
+
+### 9.4 打包
 
 使用 PyInstaller 打包为独立 exe：
 
@@ -404,33 +489,24 @@ uv run pyinstaller --onefile --name bruteforce main.py
 
 生成的 exe 文件内置 Python 运行时，用户无需安装 Python。
 
-### 9.3 多线程兼容性
-
-Python 3.13 free-threading 模式在 Windows 上完全支持 `threading` 模块，无需特殊处理。
-
 ## 10. 性能优化
 
-### 10.1 批量更新
+### 10.1 硬件自适应并发
 
-工作进程本地计数累加到阈值后再写入共享内存，减少跨进程同步开销。
+- 物理核心 > 2：使用多进程，Worker 数 = 核心数 - 1
+- 物理核心 ≤ 2：降级为多线程，Worker 数 = 逻辑线程数 - 1
 
-### 10.2 字符集预计算
+### 10.2 批量更新
 
-枚举规则中使用预计算的字符集列表，避免重复创建：
+工作进程本地计数累加到阈值（10000）后再写入共享内存，减少同步开销。
 
-```python
-DIGITS = [str(i) for i in range(10)]
-LOWERCASE = [chr(c) for c in range(ord('a'), ord('z') + 1)]
-UPPERCASE = [chr(c) for c in range(ord('A'), ord('Z') + 1)]
-```
+### 10.3 字符集预计算
 
-### 10.3 密码比对优化
+枚举规则中使用预计算的字符集列表，避免重复创建。
 
-```python
-# 直接字符串比对，Python 内部已优化
-if candidate == target:
-    # found
-```
+### 10.4 Worker 日志清理
+
+每次任务启动前自动清理旧的 `worker_*.log` 文件，避免磁盘空间占用。
 
 ## 11. 任务分解
 
@@ -467,6 +543,16 @@ if candidate == target:
 | 10 | 单元测试 | `tests/test_*.py` | 任务 1-8 | 枚举规则、共享状态并发安全、引擎流程 |
 | 11 | 项目文档 | `README.md` | 任务 8 | 使用说明、uv 环境要求、构建打包指南 |
 | 12 | PyInstaller 打包 | 打包配置 | 任务 8 | `--onefile` 打包验证 |
+
+### Phase 2 - 动态并发优化（已完成）
+
+| # | 子任务 | 产出文件 | 依赖 | 说明 |
+|---|--------|----------|------|------|
+| 13 | 硬件检测与模式切换 | `brute_force/engine.py` | psutil | 根据 CPU 核心数自动选择多进程/多线程 |
+| 14 | 多进程共享状态 | `brute_force/shared_state.py` | 无 | `multiprocessing.Value/Array` 适配 |
+| 15 | 进程管理器 | `brute_force/process_manager.py` | 无 | `multiprocessing.Process` 创建与监控 |
+| 16 | Windows spawn 兼容 | `main.py`, `worker.py` | 无 | `freeze_support()`, 文件日志 |
+| 17 | CLI ANSI 刷新优化 | `brute_force/cli.py` | ctypes | 启用 VT100，修复闪烁与残留 |
 
 ### 执行依赖图
 

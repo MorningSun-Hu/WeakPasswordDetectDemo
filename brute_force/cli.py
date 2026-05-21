@@ -156,6 +156,10 @@ def run_cli() -> None:
     print("Python 3.13 Free-threading 版本")
     print()
 
+    # 定义支持的字符集
+    import string
+    _ALLOWED_CHARS = set(string.ascii_letters + string.digits)
+
     engine_ref = [None]
 
     def signal_handler(signum, frame):
@@ -177,6 +181,14 @@ def run_cli() -> None:
             break
         if not target:
             print("密码不能为空，请重新输入。")
+            continue
+
+        # 检查是否包含不支持的符号
+        invalid_chars = [c for c in target if c not in _ALLOWED_CHARS]
+        if invalid_chars:
+            print("提示：本演示程序仅支持纯字母和数字密码。")
+            print("检测到不支持的符号: %s" % ", ".join(repr(c) for c in set(invalid_chars)))
+            print("请重新输入。")
             continue
 
         if len(target) > 8:
