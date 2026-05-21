@@ -200,7 +200,7 @@ def run_cli() -> None:
         # 每次开始前清屏
         clear_screen()
         
-        engine = BruteForceEngine(worker_count=3, callback=CLIUI.__new__(CLIUI))
+        engine = BruteForceEngine(worker_count=0, callback=CLIUI.__new__(CLIUI))
         engine.callback = CLIUI(engine)
         engine.callback.engine = engine
         engine_ref[0] = engine
