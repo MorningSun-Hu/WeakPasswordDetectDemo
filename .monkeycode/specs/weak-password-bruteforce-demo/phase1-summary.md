@@ -192,20 +192,24 @@ build.ps1        # 使用 uv（推荐）
 
 ---
 
-## 10. Phase 2 & 3 规划
+## 10. Phase 2 完成与后续规划
 
-### Phase 2: Web UI 开发（待定）
+### Phase 2: Web API 开发（已完成）
 
-- FastAPI 后端服务实现
-- Vue/React 前端进度面板
-- WebSocket 实时推送
+- [x] FastAPI 后端服务实现
+- [x] REST API (Start, Stop, Status, Result)
+- [x] WebSocket 实时推送
+- [x] 异步引擎调度与并发锁保护
 
-### Phase 3: 打包发布（待定）
+### Phase 3: 前端界面开发（待定）
 
-- README 文档完善
-- PyInstaller 打包验证
-- Windows 兼容性测试
-- 版本标记与发布
+- 原生 HTML/JS + Tailwind CDN 实现
+- 进度可视化与任务控制
+
+### Phase 4: 集成测试与发布（待定）
+
+- REST/WebSocket 集成测试
+- 打包验证与版本发布
 
 ---
 
