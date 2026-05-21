@@ -12,8 +12,8 @@ class MockCallback:
     def __init__(self):
         self.events = []
 
-    def on_started(self, target_length, worker_count, cpu_count):
-        self.events.append(("started", target_length, worker_count, cpu_count))
+    def on_started(self, target_length, worker_count, cpu_count, is_process):
+        self.events.append(("started", target_length, worker_count, cpu_count, is_process))
 
     def on_progress(self, status):
         self.events.append(("progress", status))
@@ -40,6 +40,7 @@ def test_engine_found():
     assert evt[1] == 1  # target_length
     assert evt[2] == 3  # worker_count
     assert evt[3] > 0   # cpu_count
+    assert evt[4] == True  # is_process (usually True for this test)
     
     assert any(e[0] == "found" for e in callback.events)
     
@@ -51,7 +52,10 @@ def test_engine_found():
 
 def test_engine_get_status():
     engine = BruteForceEngine(worker_count=3)
-    engine.shared_state.start_time = time.time() - 1.0
+    if engine.use_multiprocessing:
+        engine.shared_state.start_time.value = time.time() - 1.0
+    else:
+        engine.shared_state.start_time = time.time() - 1.0
     status = engine.get_status()
     assert status["running"] == False
     assert "workers" in status
@@ -63,7 +67,6 @@ def test_engine_terminate():
     callback = MockCallback()
     engine = BruteForceEngine(worker_count=3, callback=callback)
     
-    # 使用一个极难猜到的长密码，确保在规定时间内能触发终止
     import threading
     t = threading.Thread(target=engine.start, args=("ZZZZZZZZZZZZZZZZ",))
     t.start()

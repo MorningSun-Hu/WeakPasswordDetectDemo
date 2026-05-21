@@ -6,11 +6,11 @@ import time
 import threading
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from brute_force.shared_state import SharedState
+from brute_force.shared_state import create_shared_state
 
 
 def test_initial_state():
-    state = SharedState(3)
+    state = create_shared_state(3, use_multiprocessing=False)
     assert state.found == False
     assert state.terminate_flag == False
     assert state.get_total_attempts() == 0
@@ -18,7 +18,7 @@ def test_initial_state():
 
 
 def test_set_and_get_found_password():
-    state = SharedState(3)
+    state = create_shared_state(3, use_multiprocessing=False)
     state.set_found("test123", 1)
     assert state.found == True
     assert state.get_found_password() == "test123"
@@ -26,7 +26,7 @@ def test_set_and_get_found_password():
 
 
 def test_reset():
-    state = SharedState(3)
+    state = create_shared_state(3, use_multiprocessing=False)
     state.set_found("pass", 0)
     state.terminate()
     state.reset(3)
@@ -37,7 +37,7 @@ def test_reset():
 
 
 def test_add_attempts():
-    state = SharedState(3)
+    state = create_shared_state(3, use_multiprocessing=False)
     state.add_attempts(0, 100)
     state.add_attempts(1, 200)
     assert state.get_total_attempts() == 300
@@ -46,14 +46,14 @@ def test_add_attempts():
 
 
 def test_terminate():
-    state = SharedState(3)
+    state = create_shared_state(3, use_multiprocessing=False)
     assert state.is_terminated() == False
     state.terminate()
     assert state.is_terminated() == True
 
 
 def test_elapsed_time():
-    state = SharedState(3)
+    state = create_shared_state(3, use_multiprocessing=False)
     state.start_time = time.time() - 5.5
     elapsed = state.get_elapsed()
     assert 5.0 <= elapsed <= 6.0
@@ -61,7 +61,7 @@ def test_elapsed_time():
 
 def test_thread_safety():
     """多线程并发写入共享状态，验证锁是否生效"""
-    state = SharedState(3)
+    state = create_shared_state(3, use_multiprocessing=False)
     errors = []
 
     def worker(worker_id, count):

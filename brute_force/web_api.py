@@ -117,7 +117,7 @@ class WebCallback:
     def __init__(self):
         self.active_connections = []
 
-    def on_started(self, target_length: int, worker_count: int, cpu_count: int) -> None:
+    def on_started(self, target_length: int, worker_count: int, cpu_count: int, is_process: bool) -> None:
         pass
 
     def on_progress(self, status: dict) -> None:

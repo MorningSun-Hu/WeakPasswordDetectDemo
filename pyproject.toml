@@ -5,5 +5,6 @@ description = "弱口令枚举暴力破解演示程序 (Python 3.13 free-threadi
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "psutil>=7.2.2",
     "pyinstaller>=6.20.0",
 ]
