@@ -1,8 +1,6 @@
 """核心枚举引擎
 
 根据 CPU 物理核心数自动选择多进程或多线程模式。
-- 物理核心数 > 2: 多进程 (进程数 = 物理核心数 - 1)
-- 物理核心数 <= 2: 多线程 (线程数 = 逻辑线程数 - 1)
 """
 
 import time
@@ -63,15 +61,24 @@ class BruteForceEngine:
                 self.use_multiprocessing
             )
 
-        self.manager.spawn_workers(target_password, self.worker_count)
+        # 启动 Worker
+        try:
+            self.manager.spawn_workers(target_password, self.worker_count)
+        except Exception as e:
+            print("启动 Worker 失败:", e)
+            self._running = False
+            return
 
+        # 主循环
         while self._running:
             time.sleep(self.PROGRESS_INTERVAL)
 
+            # 检查 Worker 是否还活着
             if not self.manager.is_running():
                 self._running = False
                 break
 
+            # 推送进度
             if self.callback:
                 self._notify_progress()
 

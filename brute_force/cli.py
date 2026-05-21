@@ -1,11 +1,10 @@
-"""命令行界面实现
+"""命令行界面实现 (Windows 优化版)
 
-使用 os.system 清屏，保证跨平台兼容性。
-破解完成后等待用户按回车键再继续，避免结果被立刻清除。
+避免频繁清屏导致画面闪烁。
+使用固定区域刷新进度。
 """
 
 import sys
-import signal
 import os
 import time
 
@@ -38,8 +37,27 @@ def wait_for_enter() -> None:
 class CLIUI:
     def __init__(self, engine: BruteForceEngine):
         self.engine = engine
+        self._progress_start_line = 0  # 记录进度区域的起始行
 
-    def _build_progress_lines(self, status: dict) -> list:
+    def on_started(self, target_length: int, worker_count: int, cpu_count: int, is_process: bool) -> None:
+        # 记录当前行号作为进度区域的起点
+        mode_str = "多进程" if is_process else "多线程"
+        
+        print("=" * 50)
+        print("  弱口令枚举暴力破解演示")
+        print("=" * 50)
+        print("运行模式: %s | 物理核心: %d | 并发数: %d" % (mode_str, cpu_count, worker_count))
+        print("目标密码: %s 位" % ("*" * target_length))
+        print("按 Ctrl+C 提前终止")
+        print("-" * 50)
+        print()  # 空行分隔
+        
+        # Windows 控制台行号计算：打印了多少行
+        # 简单起见，我们通过打印固定行来占位，或者使用 ANSI 移动
+        # 这里使用简单的换行策略：进度显示在下方
+        self._progress_start_line = 8  # 大致行号
+
+    def on_progress(self, status: dict) -> None:
         lines = []
         for w in status["workers"]:
             rule_name = RULE_NAMES.get(w["rule_id"], "未知")
@@ -50,34 +68,27 @@ class CLIUI:
         lines.append("")
         lines.append("累计尝试: %s" % format_number(status["total_attempts"]))
         lines.append("已用时间: %s" % format_time(status["elapsed"]))
-        return lines
-
-    def on_started(self, target_length: int, worker_count: int, cpu_count: int, is_process: bool) -> None:
-        clear_screen()
-        mode_str = "多进程" if is_process else "多线程"
-        print("=" * 50)
-        print("  弱口令枚举暴力破解演示")
-        print("=" * 50)
-        print("运行模式: %s | 物理核心: %d | 并发数: %d" % (mode_str, cpu_count, worker_count))
-        print("目标密码: %s 位" % ("*" * target_length))
-        print("按 Ctrl+C 提前终止")
-        print("-" * 50)
-        print()
-
-    def on_progress(self, status: dict) -> None:
-        lines = self._build_progress_lines(status)
-        # 向上移动对应行数并清除
+        
+        # 简单覆盖刷新：向上移动，清除并打印
         line_count = len(lines)
-        sys.stdout.write("\033[%dA\r" % line_count)
-        for line in lines:
-            sys.stdout.write("\033[K%s\n" % line)
-        sys.stdout.flush()
-        # 将光标移回上方，覆盖下次输出
-        sys.stdout.write("\033[%dA\r" % line_count)
+        if os.name == "nt":
+            # Windows 回退方案：打印 \r 覆盖当前行不太适合多行
+            # 使用 cls 会破坏布局，这里使用 ANSI 转义（Win10+ 支持）
+            sys.stdout.write("\033[%dA\r" % line_count)
+            for line in lines:
+                sys.stdout.write("\033[K%s\n" % line)
+            # 光标移回起始位置以便下次覆盖
+            sys.stdout.write("\033[%dA\r" % line_count)
+        else:
+            sys.stdout.write("\033[%dA\r" % line_count)
+            for line in lines:
+                sys.stdout.write("\033[K%s\n" % line)
+            sys.stdout.write("\033[%dA\r" % line_count)
         sys.stdout.flush()
 
     def on_found(self, password: str, attempts: int, elapsed: float, worker_id: int) -> None:
-        sys.stdout.write("\033[J")  # 清除下方内容
+        # 清除下方进度内容
+        print("\033[J", end="")
         print("\n" + "=" * 50)
         print("  破解成功!")
         print("=" * 50)
@@ -89,7 +100,7 @@ class CLIUI:
         wait_for_enter()
 
     def on_terminated(self, attempts: int, elapsed: float) -> None:
-        sys.stdout.write("\033[J")
+        print("\033[J", end="")
         print("\n" + "=" * 50)
         print("  已提前终止")
         print("=" * 50)
@@ -103,6 +114,7 @@ class CLIUI:
 
 
 def run_cli() -> None:
+    # 初始欢迎界面
     clear_screen()
     print("弱口令枚举暴力破解演示程序")
     print("Python 3.13 Free-threading 版本")
@@ -114,6 +126,7 @@ def run_cli() -> None:
         if engine_ref[0]:
             engine_ref[0].terminate()
 
+    import signal
     signal.signal(signal.SIGINT, signal_handler)
 
     while True:
@@ -136,10 +149,13 @@ def run_cli() -> None:
             if confirm != "y":
                 continue
 
-        engine = BruteForceEngine(worker_count=3)
+        # 每次开始前清屏
+        clear_screen()
+        
+        engine = BruteForceEngine(worker_count=3, callback=CLIUI.__new__(CLIUI))
+        engine.callback = CLIUI(engine)
+        engine.callback.engine = engine
         engine_ref[0] = engine
-        ui = CLIUI(engine)
-        engine.callback = ui
 
         try:
             engine.start(target)
