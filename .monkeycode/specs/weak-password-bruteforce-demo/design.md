@@ -1,6 +1,6 @@
 # 弱口令枚举暴力破解演示程序 - 技术设计文档
 
-> **状态**: P0-P3 全部完成 + Phase 2 动态并发优化
+> **状态**: Phase 1 已完成（核心引擎 + CLI Interface）
 > **最后更新**: 2026-05-21
 
 ## 1. 技术选型
@@ -508,76 +508,84 @@ uv run pyinstaller --onefile --name bruteforce main.py
 
 每次任务启动前自动清理旧的 `worker_*.log` 文件，避免磁盘空间占用。
 
-## 11. 任务分解
+## 11. 开发节点规划
 
-根据模块依赖关系，将实现工作分解为以下子任务，按优先级排序：
+根据模块依赖关系与功能演进，将项目划分为多个开发阶段。
 
-### P0 - 基础核心（无外部依赖，可并行开始）
+### Phase 1: 核心及 CLI Interface 开发（已完成）
+
+Phase 1 是项目的核心基础，实现了完整的枚举引擎、并发调度机制与命令行交互界面。
+
+#### 1.1 基础核心层
 
 | # | 子任务 | 产出文件 | 依赖 | 说明 |
 |---|--------|----------|------|------|
 | 1 | 项目骨架初始化 | `pyproject.toml`, `main.py`, `brute_force/__init__.py` | 无 | uv 项目初始化、入口文件 |
-| 2 | 共享状态模块 | `brute_force/shared_state.py` | 无 | `threading.Lock` 保护共享状态 |
+| 2 | 共享状态模块 | `brute_force/shared_state.py` | 无 | 双模式适配（Process/Thread）、`threading.Lock` 保护 |
 | 3 | 枚举规则生成器 | `brute_force/enum_rules.py` | 无 | 5 种枚举规则的迭代器生成器 |
 
-### P1 - 引擎与界面（核心功能，按依赖顺序推进）
+#### 1.2 引擎与并发层
 
 | # | 子任务 | 产出文件 | 依赖 | 说明 |
 |---|--------|----------|------|------|
-| 4 | 工作线程逻辑 | `brute_force/worker.py` | 任务 2、3 | 枚举循环、密码比对、批量更新共享计数 |
-| 5 | UI 回调接口定义 | `brute_force/ui_interface.py` | 无 | `UICallback` Protocol 定义、状态字典格式 |
-| 6 | 线程管理器 | `brute_force/thread_manager.py` | 任务 2、4 | 创建/监控/终止工作线程 |
-| 7 | 核心引擎 | `brute_force/engine.py` | 任务 2、5、6 | `BruteForceEngine` 生命周期管理、回调调度 |
-| 8 | CLI 界面 | `brute_force/cli.py` | 任务 5 | 控制台输入、进度刷新、Ctrl+C 处理 |
+| 4 | 工作线程/进程逻辑 | `brute_force/worker.py` | 任务 2、3 | 枚举循环、密码比对、批量更新共享计数、诊断日志 |
+| 5 | 线程管理器 | `brute_force/thread_manager.py` | 任务 2、4 | 创建/监控/终止工作线程 |
+| 6 | 进程管理器 | `brute_force/process_manager.py` | 任务 2、4 | `multiprocessing.Process` 创建与监控、spawn 兼容 |
+| 7 | 硬件检测与模式切换 | `brute_force/engine.py` | psutil | 根据 CPU 核心数自动选择多进程/多线程 |
+| 8 | 核心引擎生命周期 | `brute_force/engine.py` | 任务 2、5、6、7 | `BruteForceEngine` 启动、终止、回调调度 |
 
-### P2 - Web API 预留（接口框架）
-
-| # | 子任务 | 产出文件 | 依赖 | 说明 |
-|---|--------|----------|------|------|
-| 9 | Web API 骨架 | `brute_force/web_api.py` | 任务 5 | REST 端点定义、WebSocket 框架（注释标记待实现） |
-
-### P3 - 测试与打包（收尾）
+#### 1.3 UI 交互层
 
 | # | 子任务 | 产出文件 | 依赖 | 说明 |
 |---|--------|----------|------|------|
-| 10 | 单元测试 | `tests/test_*.py` | 任务 1-8 | 枚举规则、共享状态并发安全、引擎流程 |
-| 11 | 项目文档 | `README.md` | 任务 8 | 使用说明、uv 环境要求、构建打包指南 |
-| 12 | PyInstaller 打包 | 打包配置 | 任务 8 | `--onefile` 打包验证 |
+| 9 | UI 回调接口定义 | `brute_force/ui_interface.py` | 无 | `UICallback` Protocol 定义、状态字典格式 |
+| 10 | CLI 界面实现 | `brute_force/cli.py` | 任务 9 | 控制台输入、ANSI 原地刷新、Ctrl+C 处理 |
+| 11 | 密码输入校验 | `brute_force/cli.py` | 任务 10 | 白名单校验（字母+数字）、拒绝符号并提示 |
 
-### Phase 2 - 动态并发优化（已完成）
+#### 1.4 Web 预留与测试层
 
 | # | 子任务 | 产出文件 | 依赖 | 说明 |
 |---|--------|----------|------|------|
-| 13 | 硬件检测与模式切换 | `brute_force/engine.py` | psutil | 根据 CPU 核心数自动选择多进程/多线程 |
-| 14 | 多进程共享状态 | `brute_force/shared_state.py` | 无 | `multiprocessing.Value/Array` 适配 |
-| 15 | 进程管理器 | `brute_force/process_manager.py` | 无 | `multiprocessing.Process` 创建与监控 |
-| 16 | Windows spawn 兼容 | `main.py`, `worker.py` | 无 | `freeze_support()`, 文件日志 |
-| 17 | CLI ANSI 刷新优化 | `brute_force/cli.py` | ctypes | 启用 VT100，修复闪烁与残留 |
+| 12 | Web API 骨架 | `brute_force/web_api.py` | 任务 9 | REST 端点定义、WebSocket 框架（注释标记待实现） |
+| 13 | 单元测试 | `tests/test_*.py` | 任务 1-11 | 枚举规则、共享状态并发安全、引擎流程 |
+
+### Phase 2: Web UI 开发（规划中）
+
+Phase 2 将实现 Web 界面，提供可视化的进度监控与任务管理。
+
+| # | 子任务 | 产出文件 | 依赖 | 说明 |
+|---|--------|----------|------|------|
+| 14 | FastAPI 后端服务 | `brute_force/web_api.py` | Phase 1 | REST API + WebSocket 实现 |
+| 15 | 前端界面开发 | `web/` 目录 | 任务 14 | Vue/React 构建可视化进度面板 |
+| 16 | 前后端集成 | 集成配置 | 任务 14、15 | CORS 配置、API 联调、WebSocket 推送 |
+
+### Phase 3: 打包发布（规划中）
+
+Phase 3 将完成产品的最终打包与发布准备。
+
+| # | 子任务 | 产出文件 | 依赖 | 说明 |
+|---|--------|----------|------|------|
+| 17 | 项目文档完善 | `README.md` | Phase 1 | 使用说明、环境要求、构建打包指南 |
+| 18 | PyInstaller 打包 | 打包配置 | Phase 1 | `--onefile` 打包验证、Windows 兼容性测试 |
+| 19 | 发布准备 | `dist/` 目录 | 任务 17、18 | 版本标记、发布说明 |
 
 ### 执行依赖图
 
 ```
-P0:  [1]    [2]    [3]          (可并行)
-          ↓      ↓
-P1:        [4]    [5]
-           ↓  ↙   ↓
-         [6]     [5]
-          ↓     ↙
-         [7]
-          ↓
-         [8]
-          ↓
-P2:      [9]          (可与 P3 并行)
-          ↓
-P3:     [10] → [11] → [12]
+Phase 1:  [1]    [2]    [3]          (基础核心，可并行)
+              ↓      ↓
+           [4]     [5]     [9]        (引擎+并发+UI接口)
+           ↓  ↙    ↓       ↓
+         [6]      [7]     [10]        (进程管理+模式切换+CLI)
+           ↓       ↓      ↓
+            [8]         [11]          (引擎生命周期+输入校验)
+             ↓          ↓
+           [12]       [13]            (Web预留+测试)
+
+Phase 2:                  [14] → [15] → [16]  (FastAPI→前端→集成)
+
+Phase 3:                            [17] → [18] → [19]  (文档→打包→发布)
 ```
-
-### 推荐执行顺序
-
-1. 先完成 P0 的三个任务（1、2、3），它们无依赖可并行开发
-2. P1 按 4→5→6→7→8 顺序推进
-3. P2（任务 9）可在任务 8 完成后并行于 P3 进行
-4. P3 的测试和打包在核心功能完成后执行
 
 ## 12. 风险与注意事项
 
