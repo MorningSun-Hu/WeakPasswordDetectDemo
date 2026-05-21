@@ -1,11 +1,12 @@
 """共享状态模块
 
-根据运行模式（多进程/多线程）使用不同的同步原语。
-多进程模式：使用 multiprocessing.Value / Array
-多线程模式：使用 threading.Lock + 原生变量
+支持多进程模式（基于 multiprocessing.Value/Array）和多线程模式。
+多进程模式下移除了全局锁，直接使用 Value 的原子操作或独立锁，避免死锁和性能瓶颈。
 """
 
 import threading
+import time
+
 
 class SharedStateThreadMode:
     """多线程模式下的共享状态实现"""
@@ -52,7 +53,6 @@ class SharedStateThreadMode:
             return sum(self.attempts)
 
     def get_elapsed(self) -> float:
-        import time
         with self._lock:
             if self.end_time > 0:
                 return self.end_time - self.start_time
@@ -75,25 +75,22 @@ class SharedStateProcessMode:
     def __init__(self, worker_count: int = 3):
         import multiprocessing
         
-        # 使用 Lock 保护非原子操作
-        self._lock = multiprocessing.Lock()
-        
-        # 布尔标志和整型使用 Value
-        self.found = multiprocessing.Value('b', False, lock=False)
-        self.found_worker_id = multiprocessing.Value('i', -1, lock=False)
+        # Value/Array 自带锁，此处直接使用它们
+        self.found = multiprocessing.Value('b', False)
+        self.found_worker_id = multiprocessing.Value('i', -1)
         self.found_password = multiprocessing.Array('c', 256)
         
-        self.terminate_flag = multiprocessing.Value('b', False, lock=False)
+        self.terminate_flag = multiprocessing.Value('b', False)
         
-        # 尝试计数器和当前规则
         self.attempts = [multiprocessing.Value('q', 0) for _ in range(worker_count)]
         self.current_rule = [multiprocessing.Value('i', 0) for _ in range(worker_count)]
         
-        self.start_time = multiprocessing.Value('d', 0.0, lock=False)
-        self.end_time = multiprocessing.Value('d', 0.0, lock=False)
+        self.start_time = multiprocessing.Value('d', 0.0)
+        self.end_time = multiprocessing.Value('d', 0.0)
 
     def reset(self, worker_count: int = 3):
-        with self._lock:
+        # 重置各状态
+        with self.found.get_lock():
             self.found.value = False
             self.found_password.value = b"\x00"
             self.found_worker_id.value = -1
@@ -105,49 +102,49 @@ class SharedStateProcessMode:
                 self.current_rule[i].value = 0
 
     def set_found(self, password: str, worker_id: int):
-        with self._lock:
-            if self.found.value: return
+        # 使用 found 的锁保护原子性检查+设置
+        with self.found.get_lock():
+            if self.found.value:
+                return
             self.found.value = True
             self.found_worker_id.value = worker_id
-            # SynchronizedString 赋值
             pw_bytes = password.encode("utf-8")[:255] + b"\x00"
             self.found_password.value = pw_bytes
 
     def get_found_password(self) -> str:
-        with self._lock:
-            raw = self.found_password.value
-            end = raw.find(b"\x00")
-            if end >= 0: raw = raw[:end]
-            return raw.decode("utf-8", errors="replace")
+        raw = self.found_password.value
+        end = raw.find(b"\x00")
+        if end >= 0: raw = raw[:end]
+        return raw.decode("utf-8", errors="replace")
 
     def add_attempts(self, worker_id: int, count: int):
-        with self._lock:
+        # 直接操作，Value 自带简单同步，或使用独立锁
+        with self.attempts[worker_id].get_lock():
             self.attempts[worker_id].value += count
 
     def get_total_attempts(self) -> int:
-        with self._lock:
-            return sum(a.value for a in self.attempts)
+        total = 0
+        for val in self.attempts:
+            with val.get_lock():
+                total += val.value
+        return total
 
     def get_elapsed(self) -> float:
-        import time
-        with self._lock:
-            if self.end_time.value > 0:
-                return self.end_time.value - self.start_time.value
-            if self.start_time.value > 0:
-                return time.time() - self.start_time.value
-            return 0.0
+        if self.end_time.value > 0:
+            return self.end_time.value - self.start_time.value
+        if self.start_time.value > 0:
+            return time.time() - self.start_time.value
+        return 0.0
 
     def terminate(self):
-        with self._lock:
-            self.terminate_flag.value = True
+        self.terminate_flag.value = True
 
     def is_terminated(self) -> bool:
-        with self._lock:
-            return self.terminate_flag.value or self.found.value
+        # 直接读取，避免争抢锁导致卡死
+        return self.terminate_flag.value or self.found.value
 
 
 def create_shared_state(worker_count: int, use_multiprocessing: bool):
-    """工厂函数：根据模式创建共享状态"""
     if use_multiprocessing:
         return SharedStateProcessMode(worker_count)
     else:

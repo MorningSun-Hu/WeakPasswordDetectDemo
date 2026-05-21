@@ -6,6 +6,8 @@
 """
 
 import time
+import os
+import sys
 
 from brute_force.shared_state import create_shared_state
 from brute_force.process_manager import ProcessManager
@@ -37,8 +39,7 @@ class BruteForceEngine:
 
         if requested_count > 0:
             self.worker_count = requested_count
-            # 如果用户指定了数量，默认使用多进程（除非物理核极少）
-            self.use_multiprocessing = self.physical_cores > 2 if requested_count <= 2 else True
+            self.use_multiprocessing = True
         else:
             if self.physical_cores <= 2:
                 self.use_multiprocessing = False
@@ -74,6 +75,7 @@ class BruteForceEngine:
             if self.callback:
                 self._notify_progress()
 
+            # 检查是否已找到密码
             if self.use_multiprocessing:
                 if self.shared_state.found.value:
                     self._running = False
@@ -85,6 +87,7 @@ class BruteForceEngine:
                     self.shared_state.end_time = time.time()
                     break
 
+        # 任务结束处理
         if self.use_multiprocessing:
             if not self.shared_state.end_time.value:
                 self.shared_state.end_time.value = time.time()
@@ -92,22 +95,17 @@ class BruteForceEngine:
             if not self.shared_state.end_time:
                 self.shared_state.end_time = time.time()
 
-        if self.use_multiprocessing:
-            found = self.shared_state.found.value
+        found_status = self.shared_state.found.value if self.use_multiprocessing else self.shared_state.found
+        if found_status:
             password = self.shared_state.get_found_password()
-            worker_id = self.shared_state.found_worker_id.value
-        else:
-            found = self.shared_state.found
-            password = self.shared_state.get_found_password()
-            worker_id = self.shared_state.found_worker_id
-
-        attempts = self.shared_state.get_total_attempts()
-        elapsed = self.shared_state.get_elapsed()
-
-        if found:
+            attempts = self.shared_state.get_total_attempts()
+            elapsed = self.shared_state.get_elapsed()
+            worker_id = self.shared_state.found_worker_id.value if self.use_multiprocessing else self.shared_state.found_worker_id
             if self.callback:
                 self.callback.on_found(password, attempts, elapsed, worker_id)
         else:
+            attempts = self.shared_state.get_total_attempts()
+            elapsed = self.shared_state.get_elapsed()
             if self.callback:
                 self.callback.on_terminated(attempts, elapsed)
 
@@ -118,8 +116,12 @@ class BruteForceEngine:
     def get_status(self) -> dict:
         workers = []
         for i in range(self.worker_count):
-            attempts = self.shared_state.attempts[i].value if self.use_multiprocessing else self.shared_state.attempts[i]
-            rule_id = self.shared_state.current_rule[i].value if self.use_multiprocessing else self.shared_state.current_rule[i]
+            if self.use_multiprocessing:
+                attempts = self.shared_state.attempts[i].value
+                rule_id = self.shared_state.current_rule[i].value
+            else:
+                attempts = self.shared_state.attempts[i]
+                rule_id = self.shared_state.current_rule[i]
             workers.append({"id": i, "attempts": attempts, "rule_id": rule_id})
         
         found_status = self.shared_state.found.value if self.use_multiprocessing else self.shared_state.found

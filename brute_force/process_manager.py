@@ -21,9 +21,11 @@ class ProcessManager:
         self.processes = []
         for i in range(worker_count):
             rule_ids = assign_rules(i, worker_count)
+            # 确保 spawn 模式下 target 是模块级函数，且 args 可 pickle
             proc = multiprocessing.Process(
                 target=worker_process,
                 args=(i, target, self.shared_state, rule_ids),
+                name=f"Worker-{i}"
             )
             proc.daemon = True
             self.processes.append(proc)
@@ -44,8 +46,9 @@ class ProcessManager:
         """设置终止标志并终止所有进程"""
         self.shared_state.terminate()
         for proc in self.processes:
-            proc.terminate()
-            proc.join(timeout=2.0)
+            if proc.is_alive():
+                proc.terminate()
+                proc.join(timeout=2.0)
 
     def get_worker_count(self) -> int:
         return len(self.processes)
