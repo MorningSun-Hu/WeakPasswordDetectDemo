@@ -26,7 +26,7 @@
 
 ...
 
-### Node 3: WebSocket 实时推送 [待开发]
+### Node 3: WebSocket 实时推送 [已完成]
 
 ...
 
@@ -40,26 +40,12 @@
 
 ## 4. 开发进度总结
 
-### Node 1: 基础设施 (100%)
-- [x] 依赖安装 (`fastapi`, `uvicorn`)
-- [x] `server.py` 基础骨架
-- [x] Pydantic 模型定义 (`schemas.py`)
-- [x] CORS 配置
-- [x] 密码校验工具 (`utils.py`)
-- [x] 任务锁初始化 (`asyncio.Lock`)
+...
 
-### Node 2: REST API (100%)
-- [x] `POST /api/v1/crack/start` (含参数校验、异步调度)
-- [x] `GET /api/v1/crack/status`
-- [x] `POST /api/v1/crack/stop`
-- [x] `GET /api/v1/crack/result`
-- [x] `WebCallback` 异步队列实现
-- [x] `ThreadPoolExecutor` 集成
-
-### Node 3: WebSocket (0%)
-- [ ] `WS /ws/crack/progress`
-- [ ] 广播机制
-- [ ] 心跳检测
+### Node 3: WebSocket (100%)
+- [x] `WS /ws/crack/progress`
+- [x] 广播机制
+- [x] 心跳检测
 
 ---
 
