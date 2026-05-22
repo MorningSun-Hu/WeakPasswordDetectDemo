@@ -789,6 +789,285 @@
             errorEl.classList.add('hidden');
         }
         
+        // ==================== WebSocket 连接管理 ====================
+        
+        let ws = null;
+        let wsReconnectTimer = null;
+        const WS_RECONNECT_DELAY = 3000; // 重连延迟 3 秒
+        
+        /**
+         * 建立 WebSocket 连接
+         */
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) return;
+            
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/crack/progress`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('WebSocket 已连接');
+                if (wsReconnectTimer) {
+                    clearTimeout(wsReconnectTimer);
+                    wsReconnectTimer = null;
+                }
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    handleWebSocketMessage(msg);
+                } catch (e) {
+                    console.error('WebSocket 消息解析失败:', e);
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket 已断开');
+                // 自动重连
+                wsReconnectTimer = setTimeout(connectWebSocket, WS_RECONNECT_DELAY);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket 错误:', error);
+            };
+        }
+        
+        /**
+         * 处理 WebSocket 消息
+         * @param {Object} msg - 消息对象 {type: string, data: any}
+         */
+        function handleWebSocketMessage(msg) {
+            switch (msg.type) {
+                case 'started':
+                    handleTaskStarted(msg.data);
+                    break;
+                case 'progress':
+                    handleTaskProgress(msg.data);
+                    break;
+                case 'found':
+                    handleTaskFound(msg.data);
+                    break;
+                case 'terminated':
+                    handleTaskTerminated(msg.data);
+                    break;
+                case 'error':
+                    handleTaskError(msg.data);
+                    break;
+                case 'ping':
+                    // 心跳消息，忽略
+                    break;
+                default:
+                    console.log('未知消息类型:', msg.type);
+            }
+        }
+        
+        /**
+         * 任务开始处理
+         */
+        function handleTaskStarted(data) {
+            const modeText = data.mode === 'process' ? '多进程' : '多线程';
+            document.getElementById('status-mode').textContent = `运行模式: ${modeText} | 并发数: ${data.worker_count}`;
+            document.getElementById('status-workers').textContent = `Worker 状态: ${data.worker_count}/${data.worker_count} 运行中`;
+        }
+        
+        /**
+         * 进度更新处理
+         */
+        function handleTaskProgress(data) {
+            // 更新尝试次数
+            const attempts = data.total_attempts || 0;
+            document.getElementById('cracking-attempts').textContent = `累计尝试 ${attempts.toLocaleString()} 次`;
+            
+            // 更新工作状态
+            if (data.workers && data.workers.length > 0) {
+                const runningWorkers = data.workers.filter(w => w.attempts > 0).length;
+                document.getElementById('status-workers').textContent = `Worker 状态: ${runningWorkers}/${data.workers.length} 运行中`;
+                
+                // 获取第一个 worker 的当前规则
+                const firstWorker = data.workers[0];
+                const ruleName = getRuleName(firstWorker.rule_id);
+                document.getElementById('status-rule').textContent = `当前规则: ${ruleName}`;
+            }
+            
+            // 计算速度
+            const now = Date.now();
+            const elapsed = (now - lastStatusTime) / 1000;
+            if (elapsed >= 0.5 && lastTotalAttempts > 0) {
+                const attemptsDiff = attempts - lastTotalAttempts;
+                const speed = Math.round(attemptsDiff / elapsed);
+                document.getElementById('status-speed').textContent = `速度: ${speed.toLocaleString()} 次/秒`;
+                
+                lastTotalAttempts = attempts;
+                lastStatusTime = now;
+            }
+        }
+        
+        /**
+         * 找到密码处理
+         */
+        function handleTaskFound(data) {
+            // 停止计时器
+            crackTimer.stop();
+            
+            // 停止动画
+            stopMatrixRain('cracking');
+            
+            // 停止状态更新
+            if (statusUpdateInterval) {
+                clearInterval(statusUpdateInterval);
+                statusUpdateInterval = null;
+            }
+            
+            // 切换到成功页
+            showView('view-success');
+            
+            // 显示结果
+            document.getElementById('success-attempts').textContent = `累计尝试 ${data.attempts.toLocaleString()} 次`;
+            document.getElementById('success-timer').textContent = formatTime(data.elapsed * 1000);
+            document.getElementById('success-password').textContent = `密码：${data.password}`;
+            
+            // 重置按钮状态
+            btnPause.classList.remove('hidden');
+            btnPlay.classList.add('hidden');
+        }
+        
+        /**
+         * 任务终止处理
+         */
+        async function handleTaskTerminated(data) {
+            // 停止计时器
+            crackTimer.stop();
+            
+            // 停止动画
+            stopMatrixRain('cracking');
+            
+            // 停止状态更新
+            if (statusUpdateInterval) {
+                clearInterval(statusUpdateInterval);
+                statusUpdateInterval = null;
+            }
+            
+            // 切换到停止页
+            showView('view-stopped');
+            
+            // 显示结果
+            document.getElementById('stopped-attempts').textContent = `累计尝试 ${(data.attempts || 0).toLocaleString()} 次`;
+            document.getElementById('stopped-timer').textContent = formatTime((data.elapsed || 0) * 1000);
+            
+            // 重置按钮状态
+            btnPause.classList.remove('hidden');
+            btnPlay.classList.add('hidden');
+        }
+        
+        /**
+         * 错误处理
+         */
+        function handleTaskError(data) {
+            console.error('后端错误:', data.message);
+            // 可以添加错误提示 UI
+        }
+        
+        /**
+         * 获取规则名称
+         * @param {number} ruleId - 规则 ID
+         * @returns {string} 规则名称
+         */
+        function getRuleName(ruleId) {
+            const ruleMap = {
+                1: '纯数字',
+                2: '字母开头+数字',
+                3: '数字+字母结尾',
+                4: '数字+小写混合',
+                5: '数字+大小写混合'
+            };
+            return ruleMap[ruleId] || '未知';
+        }
+        
+        // ==================== REST API 调用 ====================
+        
+        /**
+         * 启动破解任务
+         * @param {string} password - 目标密码
+         * @returns {Promise<Object>} 启动响应
+         */
+        async function startCrack(password) {
+            try {
+                const response = await fetch('/api/v1/crack/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: password, worker_count: 0 })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || '启动失败');
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('启动破解任务失败:', error);
+                throw error;
+            }
+        }
+        
+        /**
+         * 停止破解任务
+         * @returns {Promise<Object>} 停止响应
+         */
+        async function stopCrack() {
+            try {
+                const response = await fetch('/api/v1/crack/stop', {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || '停止失败');
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('停止破解任务失败:', error);
+                throw error;
+            }
+        }
+        
+        /**
+         * 获取当前状态
+         * @returns {Promise<Object>} 状态响应
+         */
+        async function getStatus() {
+            try {
+                const response = await fetch('/api/v1/crack/status');
+                if (!response.ok) {
+                    throw new Error('获取状态失败');
+                }
+                return await response.json();
+            } catch (error) {
+                console.error('获取状态失败:', error);
+                throw error;
+            }
+        }
+        
+        /**
+         * 获取任务结果
+         * @returns {Promise<Object>} 结果响应
+         */
+        async function getResult() {
+            try {
+                const response = await fetch('/api/v1/crack/result');
+                if (!response.ok) {
+                    throw new Error('获取结果失败');
+                }
+                return await response.json();
+            } catch (error) {
+                console.error('获取结果失败:', error);
+                throw error;
+            }
+        }
+        
         // ==================== 工作状态显示 ====================
         
         let statusUpdateInterval = null;
@@ -798,12 +1077,24 @@
         /**
          * 初始化工作状态显示
          */
-        function initWorkStatus() {
-            // 设置初始值
-            document.getElementById('status-mode').textContent = '运行模式: 多线程 | 并发数: 4';
-            document.getElementById('status-workers').textContent = 'Worker 状态: 4/4 运行中';
-            document.getElementById('status-rule').textContent = '当前规则: 纯数字';
-            document.getElementById('status-speed').textContent = '速度: 0 次/秒';
+        async function initWorkStatus() {
+            // 尝试从后端获取当前状态
+            try {
+                const status = await getStatus();
+                if (status && status.running) {
+                    const modeText = status.mode === 'process' ? '多进程' : '多线程';
+                    document.getElementById('status-mode').textContent = `运行模式: ${modeText} | 并发数: ${status.workers.length}`;
+                    document.getElementById('status-workers').textContent = `Worker 状态: ${status.workers.length}/${status.workers.length} 运行中`;
+                    document.getElementById('status-rule').textContent = '当前规则: 纯数字';
+                    document.getElementById('status-speed').textContent = '速度: --';
+                }
+            } catch (e) {
+                // 如果获取失败，使用默认值
+                document.getElementById('status-mode').textContent = '运行模式: --';
+                document.getElementById('status-workers').textContent = 'Worker 状态: --';
+                document.getElementById('status-rule').textContent = '当前规则: --';
+                document.getElementById('status-speed').textContent = '速度: --';
+            }
             
             lastTotalAttempts = 0;
             lastStatusTime = Date.now();
@@ -847,6 +1138,9 @@
         // ==================== 事件绑定 ====================
         
         document.addEventListener('DOMContentLoaded', () => {
+            // 页面加载时自动建立 WebSocket 连接
+            connectWebSocket();
+            
             // 首页 Enter 按钮
             document.getElementById('btn-enter').addEventListener('click', () => {
                 showView('view-input');
@@ -857,7 +1151,7 @@
             const startBtn = document.getElementById('btn-start');
             const passwordInput = document.getElementById('password-input');
             
-            startBtn.addEventListener('click', () => {
+            startBtn.addEventListener('click', async () => {
                 const password = passwordInput.value.trim();
                 
                 if (!password) {
@@ -871,21 +1165,34 @@
                     return;
                 }
                 
-                hideInputError();
-                showView('view-cracking');
-                
-                // 启动计时器
-                crackTimer.start();
-                crackTimer.updateDisplay('cracking-timer');
-                
-                // 重置按钮状态：显示暂停和停止，隐藏继续
-                btnPause.classList.remove('hidden');
-                btnPlay.classList.add('hidden');
-                
-                // 初始化工作状态显示
-                initWorkStatus();
-                
-                // TODO: 调用后端 API (Node 4)
+                try {
+                    // 调用后端 API 启动破解任务
+                    hideInputError();
+                    const startResult = await startCrack(password);
+                    
+                    // 切换到破解页
+                    showView('view-cracking');
+                    
+                    // 启动计时器
+                    crackTimer.start();
+                    crackTimer.updateDisplay('cracking-timer');
+                    
+                    // 重置按钮状态：显示暂停和停止，隐藏继续
+                    btnPause.classList.remove('hidden');
+                    btnPlay.classList.add('hidden');
+                    
+                    // 初始化工作状态显示
+                    initWorkStatus();
+                    
+                    // 初始化 WebSocket 连接（如果还未连接）
+                    if (!ws || ws.readyState !== WebSocket.OPEN) {
+                        connectWebSocket();
+                    }
+                    
+                    console.log('破解任务已启动:', startResult);
+                } catch (error) {
+                    showInputError(`启动失败: ${error.message}`);
+                }
             });
             
             passwordInput.addEventListener('keydown', (e) => {
@@ -926,24 +1233,47 @@
                 btnPlay.classList.remove('hidden');
             });
             
-            document.getElementById('btn-crack-stop').addEventListener('click', () => {
-                crackTimer.stop();
-                stopMatrixRain('cracking');
-                
-                // 停止状态更新
-                if (statusUpdateInterval) {
-                    clearInterval(statusUpdateInterval);
-                    statusUpdateInterval = null;
+            document.getElementById('btn-crack-stop').addEventListener('click', async () => {
+                try {
+                    // 调用后端 API 停止任务
+                    await stopCrack();
+                    
+                    // 停止计时器
+                    crackTimer.stop();
+                    stopMatrixRain('cracking');
+                    
+                    // 停止状态更新
+                    if (statusUpdateInterval) {
+                        clearInterval(statusUpdateInterval);
+                        statusUpdateInterval = null;
+                    }
+                    
+                    // 注意：正常情况下视图切换由 WebSocket terminated 消息触发
+                    // 但为了确保即使 WebSocket 断开也能正常显示，添加备用逻辑
+                    setTimeout(() => {
+                        const currentView = document.querySelector('.view:not(.hidden)');
+                        if (currentView && currentView.id === 'view-cracking') {
+                            // 如果仍在破解页，手动切换到停止页
+                            showView('view-stopped');
+                            document.getElementById('stopped-timer').textContent = formatTime(crackTimer.getTime());
+                            btnPause.classList.remove('hidden');
+                            btnPlay.classList.add('hidden');
+                        }
+                    }, 2000);
+                    
+                    console.log('破解任务已停止');
+                } catch (error) {
+                    console.error('停止任务失败:', error);
+                    // 即使 API 调用失败，也停止前端显示
+                    crackTimer.stop();
+                    stopMatrixRain('cracking');
+                    showView('view-stopped');
+                    document.getElementById('stopped-timer').textContent = formatTime(crackTimer.getTime());
+                    
+                    // 重置按钮状态
+                    btnPause.classList.remove('hidden');
+                    btnPlay.classList.add('hidden');
                 }
-                
-                showView('view-stopped');
-                document.getElementById('stopped-timer').textContent = formatTime(crackTimer.getTime());
-                
-                // 重置按钮状态
-                btnPause.classList.remove('hidden');
-                btnPlay.classList.add('hidden');
-                
-                // TODO: 调用停止 API
             });
             
             // 返回按钮
@@ -959,6 +1289,12 @@
                     clearInterval(statusUpdateInterval);
                     statusUpdateInterval = null;
                 }
+                
+                // 重置工作状态显示
+                document.getElementById('status-mode').textContent = '运行模式: --';
+                document.getElementById('status-workers').textContent = 'Worker 状态: --';
+                document.getElementById('status-rule').textContent = '当前规则: --';
+                document.getElementById('status-speed').textContent = '速度: --';
                 
                 showView('view-home');
                 passwordInput.value = '';
