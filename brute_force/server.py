@@ -105,6 +105,12 @@ async def start_crack(request: StartRequest):
             status_code=400,
             detail=f"仅支持字母和数字，检测到: {', '.join(repr(c) for c in invalid_chars)}"
         )
+    
+    if len(request.password) > 8:
+        raise HTTPException(
+            status_code=400,
+            detail="密码长度不能超过 8 位。超过 8 位的枚举可能需要极长时间。"
+        )
 
     # 检查是否有任务正在运行
     if lock.locked():

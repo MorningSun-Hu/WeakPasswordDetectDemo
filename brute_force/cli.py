@@ -192,10 +192,9 @@ def run_cli() -> None:
             continue
 
         if len(target) > 8:
-            print("警告：目标密码超过8位，枚举可能需要很长时间。")
-            confirm = input("是否继续? (y/n): ").strip().lower()
-            if confirm != "y":
-                continue
+            print("错误：密码长度不能超过 8 位。")
+            print("请重新输入。")
+            continue
 
         # 每次开始前清屏
         clear_screen()

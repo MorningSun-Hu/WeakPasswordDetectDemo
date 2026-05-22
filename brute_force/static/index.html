@@ -413,6 +413,8 @@
                         class="password-input" 
                         autocomplete="off"
                         spellcheck="false"
+                        maxlength="8"
+                        placeholder="支持 1-8 位纯字母或数字"
                     >
                     <button id="btn-start" class="start-btn">开始</button>
                 </div>
@@ -633,14 +635,14 @@
             
             function tick() {
                 if (running) {
-                    elapsed = Date.now() - startTime;
+                    elapsed = performance.now() - startTime;
                     rafId = requestAnimationFrame(tick);
                 }
             }
             
             return {
                 start() {
-                    startTime = Date.now();
+                    startTime = performance.now();
                     elapsed = 0;
                     pausedTime = 0;
                     running = true;
@@ -651,13 +653,13 @@
                     running = false;
                     isPaused = false;
                     if (rafId) cancelAnimationFrame(rafId);
-                    elapsed = Date.now() - startTime;
+                    elapsed = performance.now() - startTime;
                 },
                 pause() {
                     if (running && !isPaused) {
                         running = false;
                         isPaused = true;
-                        pausedTime = Date.now() - startTime;
+                        pausedTime = performance.now() - startTime;
                         if (rafId) cancelAnimationFrame(rafId);
                     }
                 },
@@ -665,7 +667,7 @@
                     if (isPaused) {
                         isPaused = false;
                         running = true;
-                        startTime = Date.now() - pausedTime;
+                        startTime = performance.now() - pausedTime;
                         rafId = requestAnimationFrame(tick);
                     }
                 },
@@ -831,7 +833,13 @@
                 }
             }
             
-            return { valid: invalidChars.length === 0, invalidChars };
+            const lengthValid = password.length >= 1 && password.length <= 8;
+            
+            return { 
+                valid: invalidChars.length === 0 && lengthValid, 
+                invalidChars, 
+                lengthError: lengthValid ? '' : '密码长度必须在 1 到 8 位之间' 
+            };
         }
         
         function showInputError(message) {
@@ -1330,6 +1338,10 @@
                 }
                 
                 const result = validatePassword(password);
+                if (result.lengthError) {
+                    showInputError(result.lengthError);
+                    return;
+                }
                 if (!result.valid) {
                     showInputError(`仅支持字母和数字，检测到: ${result.invalidChars.join(', ')}`);
                     return;
