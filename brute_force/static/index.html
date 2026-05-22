@@ -4,60 +4,970 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>弱口令暴力破解演示（体验）</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 内联关键样式，不依赖 CDN -->
     <style>
-        /* 基础样式 */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        /* Tailwind 核心工具类 (精简版) */
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .items-center { align-items: center; }
+        .justify-center { justify-content: center; }
+        .gap-3 { gap: 0.75rem; }
+        .gap-6 { gap: 1.5rem; }
+        .hidden { display: none !important; }
+        .absolute { position: absolute; }
+        .relative { position: relative; }
+        .fixed { position: fixed; }
+        .top-0 { top: 0; }
+        .left-0 { left: 0; }
+        .top-6 { top: 1.5rem; }
+        .top-8 { top: 2rem; }
+        .left-6 { left: 1.5rem; }
+        .left-8 { left: 2rem; }
+        .bottom-6 { bottom: 1.5rem; }
+        .bottom-8 { bottom: 2rem; }
+        .right-6 { right: 1.5rem; }
+        .right-8 { right: 2rem; }
+        .z-10 { z-index: 10; }
+        .z-0 { z-index: 0; }
+        .w-full { width: 100%; }
+        .w-48 { width: 12rem; }
+        .w-56 { width: 14rem; }
+        .h-16 { height: 4rem; }
+        .h-20 { height: 5rem; }
+        .h-6 { height: 1.5rem; }
+        .h-screen { height: 100vh; }
+        .mb-12 { margin-bottom: 3rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .px-4 { padding-left: 1rem; padding-right: 1rem; }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .text-white { color: #fff; }
+        .text-red-500 { color: #ef4444; }
+        .text-red-400 { color: #f87171; }
+        .text-sm { font-size: 0.875rem; }
+        .text-lg { font-size: 1.125rem; }
+        .text-xl { font-size: 1.25rem; }
+        .text-2xl { font-size: 1.5rem; }
+        .text-3xl { font-size: 1.875rem; }
+        .text-4xl { font-size: 2.25rem; }
+        .font-bold { font-weight: 700; }
+        .font-medium { font-weight: 500; }
+        .whitespace-nowrap { white-space: nowrap; }
+        .focus\:outline-none:focus { outline: none; }
+        
+        /* 响应式 */
+        @media (min-width: 768px) {
+            .md\:text-3xl { font-size: 1.875rem; }
+            .md\:text-5xl { font-size: 3rem; }
+            .md\:w-56 { width: 14rem; }
+            .md\:h-20 { height: 5rem; }
+            .md\:text-xl { font-size: 1.25rem; }
+        }
+        @media (min-width: 1024px) {
+            .lg\:text-4xl { font-size: 2.25rem; }
+            .lg\:text-6xl { font-size: 3.75rem; }
         }
         
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-            overflow: hidden;
-            background-color: #000;
-        }
-        
-        .hidden {
-            display: none !important;
-        }
-        
+        /* 视图容器 */
         .view {
             width: 100vw;
             height: 100vh;
             position: absolute;
             top: 0;
             left: 0;
+            overflow: hidden;
+        }
+        
+        /* 背景层 */
+        .bg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+        
+        .bg-home {
+            background-image: url('/assets/index-background.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        
+        /* 标题阴影 */
+        .title-shadow {
+            text-shadow: 0 0 20px rgba(0, 150, 255, 0.5), 0 2px 10px rgba(0, 0, 0, 0.6);
+        }
+        
+        /* 数字雨 Canvas */
+        #matrix-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+        
+        /* Enter 按钮 */
+        .enter-btn {
+            background: url('/assets/Enter-button.png') center/contain no-repeat;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.2s ease, filter 0.2s ease;
+            position: relative;
+            z-index: 10;
+            color: #ffd700;
+            font-size: 1.2rem;
+            font-weight: bold;
+            letter-spacing: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding-top: 4px;
+        }
+        
+        .enter-btn:hover {
+            transform: scale(1.05);
+            filter: brightness(1.1);
+        }
+        
+        .enter-btn:active {
+            transform: scale(0.95);
+        }
+        
+        /* 密码输入框 */
+        .password-input {
+            background: rgba(255, 255, 255, 0.95);
+            border: none;
+            border-radius: 9999px;
+            padding: 12px 24px;
+            font-size: 1.1rem;
+            outline: none;
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .password-input:focus {
+            box-shadow: 0 0 15px rgba(0, 150, 255, 0.5);
+        }
+        
+        /* 开始按钮 */
+        .start-btn {
+            background: linear-gradient(135deg, #e0e0e0, #ffffff);
+            border: none;
+            border-radius: 9999px;
+            padding: 12px 32px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            color: #333;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        
+        .start-btn:hover {
+            background: linear-gradient(135deg, #d0d0d0, #f0f0f0);
+            transform: scale(1.02);
+        }
+        
+        .start-btn:active {
+            transform: scale(0.98);
+        }
+        
+        /* 错误提示动画 */
+        .error-shake {
+            animation: shake 0.5s ease-in-out;
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        /* 内容层 */
+        .content-layer {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* 计时器样式 */
+        .timer-display {
+            font-family: 'Courier New', monospace;
+            font-size: 6rem;
+            font-weight: 900;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+            letter-spacing: 4px;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .attempts-display {
+            margin: 0;
+            padding: 0;
+        }
+        
+        .status-display {
+            margin: 0;
+            padding: 0;
+        }
+        
+        @media (max-width: 768px) {
+            .timer-display {
+                font-size: 2.5rem;
+            }
+        }
+        
+        /* 控制按钮容器 */
+        .ctrl-group {
+            position: absolute;
+            bottom: 3rem;
+            right: 2rem;
+            display: flex;
+            gap: 1rem;
+            z-index: 20;
+        }
+
+        .ctrl-btn {
+            position: relative;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            transition-delay: 0s;
+        }
+        
+        .ctrl-btn:hover {
+            transform: scale(1.15);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+        }
+        
+        .ctrl-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Tooltip 提示文字 */
+        .ctrl-btn .tooltip {
+            position: absolute;
+            bottom: calc(100% + 10px);
+            left: 50%;
+            transform: translateX(-50%) translateY(5px);
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.15s ease;
+            transition-delay: 0s;
+            pointer-events: none;
+        }
+
+        .ctrl-btn .tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: rgba(0, 0, 0, 0.8);
+        }
+        
+        .ctrl-btn:hover .tooltip {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+        
+        .btn-play { background: #fbbf24; }
+        .btn-pause { background: #fbbf24; }
+        .btn-stop { background: #fbbf24; }
+        
+        .btn-continue { background: #22c55e; }
+        
+        /* 皇冠图片 */
+        .crown-icon {
+            width: 80px;
+            height: 80px;
+            object-fit: contain;
         }
     </style>
 </head>
 <body>
-    <!-- 视图容器 -->
+    <!-- ==================== 首页 ==================== -->
     <div id="view-home" class="view">
-        <!-- 首页内容 - Node 2-1 实现 -->
+        <!-- 背景层 -->
+        <div class="bg-layer bg-home"></div>
+        
+        <!-- 内容层 -->
+        <div class="content-layer flex flex-col items-center justify-center">
+            <!-- 免责声明 -->
+            <div class="absolute top-6 left-6 text-red-500 text-sm font-medium">
+                仅教学演示使用请勿用于其它用途
+            </div>
+            
+            <!-- 标题 -->
+            <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold text-white title-shadow mb-12 text-center px-4">
+                弱口令暴力破解演示（体验）
+            </h1>
+            
+            <!-- Enter 按钮 -->
+            <button id="btn-enter" class="enter-btn" style="width: 280px; height: 90px; font-size: 1.8rem;" aria-label="Enter">
+                Enter
+            </button>
+            
+            <!-- 署名信息 -->
+            <div class="absolute bottom-8 right-8 text-center" style="color: rgba(255, 255, 255, 0.5); font-family: 'KaiTi', '楷体', 'STKaiti', serif; font-size: 25px; font-weight: bold;">
+                <p>胡晨阳</p>
+                <p>丹阳市新桥初级中学</p>
+            </div>
+        </div>
     </div>
     
+    <!-- ==================== 用户输入页 ==================== -->
     <div id="view-input" class="view hidden">
-        <!-- 用户输入页内容 - Node 2-2 实现 -->
+        <!-- 背景层 -->
+        <div class="bg-layer bg-home"></div>
+        
+        <!-- 内容层 -->
+        <div class="content-layer flex flex-col items-center justify-center">
+            <!-- 标题 -->
+            <h1 class="absolute top-8 left-8 text-2xl md:text-3xl lg:text-4xl font-bold text-white title-shadow">
+                弱口令暴力破解演示（体验）
+            </h1>
+            
+            <!-- 输入区域 -->
+            <div class="flex flex-col gap-6 px-4" style="align-items: flex-start; max-width: 600px; width: 100%;">
+                <label for="password-input" class="text-white text-lg md:text-xl">请输入密码：</label>
+                
+                <div class="flex items-center gap-3 w-full">
+                    <input 
+                        type="password" 
+                        id="password-input" 
+                        class="password-input" 
+                        autocomplete="off"
+                        spellcheck="false"
+                    >
+                    <button id="btn-start" class="start-btn">开始</button>
+                </div>
+                
+                <p id="input-error" class="text-red-400 text-sm h-6 hidden"></p>
+            </div>
+            
+            <!-- 免责声明 -->
+            <div class="absolute bottom-6 right-6 text-red-500 text-sm font-medium">
+                仅教学演示使用请勿用于其它用途
+            </div>
+        </div>
     </div>
     
+    <!-- ==================== 破解过程展示页 ==================== -->
     <div id="view-cracking" class="view hidden">
-        <!-- 破解过程展示页内容 - Node 3-1 实现 -->
+        <!-- 数字雨 Canvas -->
+        <canvas id="matrix-canvas-cracking" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; background: #000;"></canvas>
+        
+        <!-- 内容层 -->
+        <div class="content-layer flex flex-col items-center justify-center" style="position: relative; z-index: 10;">
+            <!-- 标题 -->
+            <h1 class="absolute top-8 left-8 text-2xl md:text-3xl font-bold text-white title-shadow">
+                弱口令暴力破解演示（体验）
+            </h1>
+            
+            <!-- 状态信息 -->
+            <div class="flex flex-col items-start text-left ml-12 md:ml-24" style="gap: 0.5rem;">
+                <p class="text-white text-lg attempts-display" id="cracking-attempts">累计尝试 0 次</p>
+                <p class="timer-display" id="cracking-timer">00:00:00.000</p>
+            </div>
+
+            <!-- 工作状态信息 (左下角) -->
+            <div class="absolute left-8 text-white" style="bottom: 6rem; font-family: monospace; font-size: 0.875rem; line-height: 1.1;">
+                <div id="work-status">
+                    <p id="status-mode">运行模式: --</p>
+                    <p id="status-workers">Worker 状态: --</p>
+                    <p id="status-rule">当前规则: --</p>
+                    <p id="status-speed">速度: --</p>
+                </div>
+            </div>
+
+            <!-- 控制按钮 -->
+            <div class="ctrl-group">
+                <button id="btn-play" class="ctrl-btn btn-play hidden">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="#fff"><polygon points="5,3 17,10 5,17"/></svg>
+                    <span class="tooltip">继续</span>
+                </button>
+                <button id="btn-pause" class="ctrl-btn btn-pause">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="#fff"><rect x="4" y="3" width="4" height="14"/><rect x="12" y="3" width="4" height="14"/></svg>
+                    <span class="tooltip">暂停</span>
+                </button>
+                <button id="btn-crack-stop" class="ctrl-btn btn-stop">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="#fff"><rect x="3" y="3" width="14" height="14"/></svg>
+                    <span class="tooltip">停止</span>
+                </button>
+            </div>
+            
+            <!-- 免责声明 -->
+            <div class="absolute bottom-6 right-6 text-red-500 text-sm font-medium">
+                仅教学演示使用请勿用于其它用途
+            </div>
+        </div>
     </div>
     
+    <!-- ==================== 破解成功展示页 ==================== -->
     <div id="view-success" class="view hidden">
-        <!-- 破解成功展示页内容 - Node 3-5 实现 -->
+        <!-- 数字雨 Canvas -->
+        <canvas id="matrix-canvas-success" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; background: #000;"></canvas>
+        
+        <!-- 内容层 -->
+        <div class="content-layer flex flex-col items-center justify-center" style="position: relative; z-index: 10;">
+            <!-- 标题 -->
+            <h1 class="absolute top-8 left-8 text-2xl md:text-3xl font-bold text-white title-shadow">
+                弱口令暴力破解演示（体验）
+            </h1>
+            
+            <!-- 结果信息 -->
+            <div class="flex flex-col items-start text-left ml-12 md:ml-24" style="gap: 0.5rem;">
+                <p class="text-white text-lg attempts-display" id="success-attempts">累计尝试 0 次</p>
+                <p class="timer-display" id="success-timer">00:00:00.000</p>
+                
+                <!-- 皇冠图标 -->
+                <img src="/assets/crown.png" alt="破解成功" class="crown-icon" style="margin: 0.5rem 0;">
+                
+                <p class="text-white text-xl status-display" id="success-password">密码：******</p>
+            </div>
+            
+            <!-- 返回按钮 -->
+            <div class="ctrl-group">
+                <button id="btn-success-back" class="ctrl-btn btn-continue">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="#fff"><polygon points="4,10 16,4 16,16"/></svg>
+                    <span class="tooltip">返回首页</span>
+                </button>
+            </div>
+            
+            <!-- 免责声明 -->
+            <div class="absolute bottom-6 right-6 text-red-500 text-sm font-medium">
+                仅教学演示使用请勿用于其它用途
+            </div>
+        </div>
     </div>
     
+    <!-- ==================== 用户主动停止展示页 ==================== -->
     <div id="view-stopped" class="view hidden">
-        <!-- 用户主动停止展示页内容 - Node 3-6 实现 -->
+        <!-- 数字雨 Canvas -->
+        <canvas id="matrix-canvas-stopped" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; background: #000;"></canvas>
+        
+        <!-- 内容层 -->
+        <div class="content-layer flex flex-col items-center justify-center" style="position: relative; z-index: 10;">
+            <!-- 标题 -->
+            <h1 class="absolute top-8 left-8 text-2xl md:text-3xl font-bold text-white title-shadow">
+                弱口令暴力破解演示（体验）
+            </h1>
+            
+            <!-- 停止信息 -->
+            <div class="flex flex-col items-start text-left ml-12 md:ml-24" style="gap: 0.5rem;">
+                <p class="text-white text-lg attempts-display" id="stopped-attempts">累计尝试 0 次</p>
+                <p class="timer-display" id="stopped-timer">00:00:00.000</p>
+                <p class="text-white text-xl mt-2 status-display">用户主动停止......</p>
+            </div>
+            
+            <!-- 返回按钮 -->
+            <div class="ctrl-group">
+                <button id="btn-stopped-back" class="ctrl-btn btn-continue">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="#fff"><polygon points="4,10 16,4 16,16"/></svg>
+                    <span class="tooltip">返回首页</span>
+                </button>
+            </div>
+            
+            <!-- 免责声明 -->
+            <div class="absolute bottom-6 right-6 text-red-500 text-sm font-medium">
+                仅教学演示使用请勿用于其它用途
+            </div>
+        </div>
     </div>
     
     <script>
-        // 前端业务逻辑 - Node 2-3 及后续节点实现
+        // ==================== 数字雨动画 ====================
+        
+        /**
+         * 初始化并启动 Matrix 风格数字雨
+         * @param {HTMLCanvasElement} canvas - Canvas 元素
+         */
+        function startMatrixRain(canvas) {
+            const ctx = canvas.getContext('2d');
+            
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            resize();
+            window.addEventListener('resize', resize);
+            
+            const fontSize = 24;
+            const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+            const columns = Math.floor(canvas.width / fontSize);
+            const drops = Array(columns).fill(1);
+            
+            function draw() {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.4)';
+                ctx.font = fontSize + 'px monospace';
+                
+                for (let i = 0; i < drops.length; i++) {
+                    const text = chars[Math.floor(Math.random() * chars.length)];
+                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                    
+                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.985) {
+                        drops[i] = 0;
+                    }
+                    drops[i]++;
+                }
+            }
+            
+            setInterval(draw, 50);
+        }
+        
+        // ==================== 计时器组件 ====================
+        
+        /**
+         * 格式化时间为 HH:MM:SS.mmm
+         * @param {number} ms - 毫秒数
+         * @returns {string} 格式化后的时间字符串
+         */
+        function formatTime(ms) {
+            const hours = Math.floor(ms / 3600000);
+            const minutes = Math.floor((ms % 3600000) / 60000);
+            const seconds = Math.floor((ms % 60000) / 1000);
+            const millis = ms % 1000;
+            
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
+        }
+        
+        /**
+         * 创建计时器
+         * @returns {{start: Function, stop: Function, pause: Function, resume: Function, getTime: Function, updateDisplay: Function, isPaused: boolean}}
+         */
+        function createTimer() {
+            let startTime = 0;
+            let elapsed = 0;
+            let pausedTime = 0;
+            let running = false;
+            let isPaused = false;
+            let rafId = null;
+            
+            function tick() {
+                if (running) {
+                    elapsed = Date.now() - startTime;
+                    rafId = requestAnimationFrame(tick);
+                }
+            }
+            
+            return {
+                start() {
+                    startTime = Date.now();
+                    elapsed = 0;
+                    pausedTime = 0;
+                    running = true;
+                    isPaused = false;
+                    rafId = requestAnimationFrame(tick);
+                },
+                stop() {
+                    running = false;
+                    isPaused = false;
+                    if (rafId) cancelAnimationFrame(rafId);
+                    elapsed = Date.now() - startTime;
+                },
+                pause() {
+                    if (running && !isPaused) {
+                        running = false;
+                        isPaused = true;
+                        pausedTime = Date.now() - startTime;
+                        if (rafId) cancelAnimationFrame(rafId);
+                    }
+                },
+                resume() {
+                    if (isPaused) {
+                        isPaused = false;
+                        running = true;
+                        startTime = Date.now() - pausedTime;
+                        rafId = requestAnimationFrame(tick);
+                    }
+                },
+                getTime() {
+                    return isPaused ? pausedTime : elapsed;
+                },
+                updateDisplay(elementId) {
+                    const el = document.getElementById(elementId);
+                    if (el) el.textContent = formatTime(this.getTime());
+                    if (running) {
+                        rafId = requestAnimationFrame(() => this.updateDisplay(elementId));
+                    }
+                }
+            };
+        }
+        
+        // ==================== SPA 视图切换逻辑 ====================
+        
+        // 全局计时器实例
+        let crackTimer = createTimer();
+        let matrixIntervals = {};
+        
+        /**
+         * 启动 Matrix 风格数字雨
+         * @param {HTMLCanvasElement} canvas - Canvas 元素
+         * @returns {number} setInterval 的 ID
+         */
+        function startMatrixRain(canvas) {
+            const ctx = canvas.getContext('2d');
+            
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            resize();
+            window.addEventListener('resize', resize);
+            
+            const fontSize = 24;
+            const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+            const columns = Math.floor(canvas.width / fontSize);
+            const drops = Array(columns).fill(1);
+            
+            function draw() {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.4)';
+                ctx.font = fontSize + 'px monospace';
+                
+                for (let i = 0; i < drops.length; i++) {
+                    const text = chars[Math.floor(Math.random() * chars.length)];
+                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                    
+                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.985) {
+                        drops[i] = 0;
+                    }
+                    drops[i]++;
+                }
+            }
+            
+            return setInterval(draw, 50);
+        }
+
+        /**
+         * 绘制静态数字雨（下落过程中的定格状态）
+         * @param {HTMLCanvasElement} canvas - Canvas 元素
+         */
+        function drawStaticMatrixRain(canvas) {
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            const fontSize = 24;
+            const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+            const columns = Math.floor(canvas.width / fontSize);
+            
+            // 黑色背景
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 随机绘制多列数字雨，模拟下落过程中的状态
+            ctx.font = fontSize + 'px monospace';
+            
+            for (let i = 0; i < columns; i++) {
+                // 随机决定这一列是否有雨滴
+                if (Math.random() > 0.3) continue;
+                
+                // 随机决定雨滴长度和起始位置
+                const length = Math.floor(Math.random() * 15) + 5;
+                const startY = Math.floor(Math.random() * canvas.height);
+                
+                for (let j = 0; j < length; j++) {
+                    const y = startY + j * fontSize;
+                    if (y < 0 || y > canvas.height) continue;
+                    
+                    // 越往后越透明，模拟拖尾效果
+                    const alpha = 0.1 + (0.3 * (1 - j / length));
+                    ctx.fillStyle = `rgba(0, 255, 0, ${alpha})`;
+                    
+                    const text = chars[Math.floor(Math.random() * chars.length)];
+                    ctx.fillText(text, i * fontSize, y);
+                }
+            }
+        }
+
+        /**
+         * 停止指定视图的数字雨动画
+         * @param {string} viewName - 视图名称 (cracking/success/stopped)
+         */
+        function stopMatrixRain(viewName) {
+            if (matrixIntervals[viewName]) {
+                clearInterval(matrixIntervals[viewName]);
+                delete matrixIntervals[viewName];
+            }
+        }
+        
+        /**
+         * 显示指定视图，隐藏其他所有视图
+         * @param {string} viewId - 视图容器的 ID (不含 #)
+         */
+        function showView(viewId) {
+            const views = ['view-home', 'view-input', 'view-cracking', 'view-success', 'view-stopped'];
+            views.forEach(id => {
+                const el = document.getElementById(id);
+                if (id === viewId) {
+                    el.classList.remove('hidden');
+                } else {
+                    el.classList.add('hidden');
+                }
+            });
+            
+            // 启动/停止对应视图的数字雨
+            if (viewId === 'view-cracking' && !matrixIntervals.cracking) {
+                const canvas = document.getElementById('matrix-canvas-cracking');
+                matrixIntervals.cracking = startMatrixRain(canvas);
+            }
+            if (viewId === 'view-success') {
+                const canvas = document.getElementById('matrix-canvas-success');
+                if (!matrixIntervals.success) {
+                    matrixIntervals.success = startMatrixRain(canvas);
+                }
+                // 进入成功页后停止动画
+                setTimeout(() => stopMatrixRain('success'), 100);
+            }
+            if (viewId === 'view-stopped') {
+                const canvas = document.getElementById('matrix-canvas-stopped');
+                if (!matrixIntervals.stopped) {
+                    // 绘制静态数字雨画面（下落过程中的定格状态）
+                    drawStaticMatrixRain(canvas);
+                    matrixIntervals.stopped = true;
+                }
+            }
+        }
+        
+        // ==================== 密码校验逻辑 ====================
+        
+        function validatePassword(password) {
+            const invalidChars = [];
+            const allowed = /^[a-zA-Z0-9]$/;
+            
+            for (const char of password) {
+                if (!allowed.test(char)) {
+                    if (!invalidChars.includes(char)) {
+                        invalidChars.push(char);
+                    }
+                }
+            }
+            
+            return { valid: invalidChars.length === 0, invalidChars };
+        }
+        
+        function showInputError(message) {
+            const errorEl = document.getElementById('input-error');
+            errorEl.textContent = message;
+            errorEl.classList.remove('hidden');
+            
+            const inputEl = document.getElementById('password-input');
+            inputEl.classList.add('error-shake');
+            setTimeout(() => inputEl.classList.remove('error-shake'), 500);
+        }
+        
+        function hideInputError() {
+            const errorEl = document.getElementById('input-error');
+            errorEl.textContent = '';
+            errorEl.classList.add('hidden');
+        }
+        
+        // ==================== 工作状态显示 ====================
+        
+        let statusUpdateInterval = null;
+        let lastTotalAttempts = 0;
+        let lastStatusTime = 0;
+        
+        /**
+         * 初始化工作状态显示
+         */
+        function initWorkStatus() {
+            // 设置初始值
+            document.getElementById('status-mode').textContent = '运行模式: 多线程 | 并发数: 4';
+            document.getElementById('status-workers').textContent = 'Worker 状态: 4/4 运行中';
+            document.getElementById('status-rule').textContent = '当前规则: 纯数字';
+            document.getElementById('status-speed').textContent = '速度: 0 次/秒';
+            
+            lastTotalAttempts = 0;
+            lastStatusTime = Date.now();
+            
+            // 启动定时更新
+            if (statusUpdateInterval) clearInterval(statusUpdateInterval);
+            statusUpdateInterval = setInterval(updateWorkStatus, 500);
+        }
+        
+        /**
+         * 更新工作状态显示
+         */
+        function updateWorkStatus() {
+            // 如果已暂停，不更新
+            if (crackTimer.isPaused) return;
+            
+            const now = Date.now();
+            const elapsed = (now - lastStatusTime) / 1000; // 秒
+            if (elapsed < 0.5) return;
+            
+            // 模拟尝试次数增长（后续会从后端获取真实数据）
+            const currentAttempts = parseInt(document.getElementById('cracking-attempts').textContent.replace(/[^0-9]/g, '')) || 0;
+            const attemptsDiff = currentAttempts - lastTotalAttempts;
+            const speed = Math.round(attemptsDiff / elapsed);
+            
+            // 更新速度显示
+            document.getElementById('status-speed').textContent = `速度: ${speed.toLocaleString()} 次/秒`;
+            
+            // 模拟规则切换（根据尝试次数）
+            let currentRule = '纯数字';
+            if (currentAttempts > 100000) currentRule = '字母开头+数字';
+            if (currentAttempts > 500000) currentRule = '数字+字母结尾';
+            if (currentAttempts > 1000000) currentRule = '数字+小写混合';
+            if (currentAttempts > 5000000) currentRule = '数字+大小写混合';
+            document.getElementById('status-rule').textContent = `当前规则: ${currentRule}`;
+            
+            lastTotalAttempts = currentAttempts;
+            lastStatusTime = now;
+        }
+        
+        // ==================== 事件绑定 ====================
+        
         document.addEventListener('DOMContentLoaded', () => {
+            // 首页 Enter 按钮
+            document.getElementById('btn-enter').addEventListener('click', () => {
+                showView('view-input');
+                document.getElementById('password-input').focus();
+            });
+            
+            // 开始按钮
+            const startBtn = document.getElementById('btn-start');
+            const passwordInput = document.getElementById('password-input');
+            
+            startBtn.addEventListener('click', () => {
+                const password = passwordInput.value.trim();
+                
+                if (!password) {
+                    showInputError('请输入密码');
+                    return;
+                }
+                
+                const result = validatePassword(password);
+                if (!result.valid) {
+                    showInputError(`仅支持字母和数字，检测到: ${result.invalidChars.join(', ')}`);
+                    return;
+                }
+                
+                hideInputError();
+                showView('view-cracking');
+                
+                // 启动计时器
+                crackTimer.start();
+                crackTimer.updateDisplay('cracking-timer');
+                
+                // 重置按钮状态：显示暂停和停止，隐藏继续
+                btnPause.classList.remove('hidden');
+                btnPlay.classList.add('hidden');
+                
+                // 初始化工作状态显示
+                initWorkStatus();
+                
+                // TODO: 调用后端 API (Node 4)
+            });
+            
+            passwordInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') startBtn.click();
+            });
+            
+            passwordInput.addEventListener('input', hideInputError);
+            
+            // 控制按钮
+            const btnPlay = document.getElementById('btn-play');
+            const btnPause = document.getElementById('btn-pause');
+            
+            btnPlay.addEventListener('click', () => {
+                // 恢复破解：继续计时器 + 继续动画
+                crackTimer.resume();
+                crackTimer.updateDisplay('cracking-timer');
+                
+                // 恢复数字雨动画
+                const canvas = document.getElementById('matrix-canvas-cracking');
+                if (!matrixIntervals.cracking) {
+                    matrixIntervals.cracking = startMatrixRain(canvas);
+                }
+                
+                // 切换按钮显示
+                btnPlay.classList.add('hidden');
+                btnPause.classList.remove('hidden');
+            });
+            
+            btnPause.addEventListener('click', () => {
+                // 暂停破解：暂停计时器 + 停止动画
+                crackTimer.pause();
+                
+                // 停止数字雨动画
+                stopMatrixRain('cracking');
+                
+                // 切换按钮显示
+                btnPause.classList.add('hidden');
+                btnPlay.classList.remove('hidden');
+            });
+            
+            document.getElementById('btn-crack-stop').addEventListener('click', () => {
+                crackTimer.stop();
+                stopMatrixRain('cracking');
+                
+                // 停止状态更新
+                if (statusUpdateInterval) {
+                    clearInterval(statusUpdateInterval);
+                    statusUpdateInterval = null;
+                }
+                
+                showView('view-stopped');
+                document.getElementById('stopped-timer').textContent = formatTime(crackTimer.getTime());
+                
+                // 重置按钮状态
+                btnPause.classList.remove('hidden');
+                btnPlay.classList.add('hidden');
+                
+                // TODO: 调用停止 API
+            });
+            
+            // 返回按钮
+            document.getElementById('btn-success-back').addEventListener('click', resetToHome);
+            document.getElementById('btn-stopped-back').addEventListener('click', resetToHome);
+            
+            function resetToHome() {
+                crackTimer.stop();
+                stopMatrixRain('cracking');
+                
+                // 停止状态更新
+                if (statusUpdateInterval) {
+                    clearInterval(statusUpdateInterval);
+                    statusUpdateInterval = null;
+                }
+                
+                showView('view-home');
+                passwordInput.value = '';
+                
+                // 重置按钮状态
+                btnPause.classList.remove('hidden');
+                btnPlay.classList.add('hidden');
+            }
+            
             console.log('Web UI 已加载');
         });
     </script>
