@@ -3,6 +3,7 @@
 import sys
 import os
 import time
+import signal
 
 # 立即尝试写入启动日志，验证进程是否真的启动了
 _log_file = "worker_%d.log" % os.getpid()
@@ -40,9 +41,14 @@ BATCH_SIZE = 10000
 
 def worker_process(worker_id: int, target: str, shared_state, rule_ids: list) -> None:
     """工作进程入口函数"""
+    # 子进程忽略 SIGINT，由主进程统一处理 Ctrl+C
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    
     _log("worker_process called with ID: %d, Rules: %s" % (worker_id, rule_ids))
     try:
         _run_worker(worker_id, target, shared_state, rule_ids)
+    except KeyboardInterrupt:
+        _log("Worker %d received KeyboardInterrupt, exiting gracefully." % worker_id)
     except Exception as e:
         _log("CRASHED: %s" % e)
         import traceback

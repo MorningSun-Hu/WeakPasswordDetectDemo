@@ -8,7 +8,8 @@
   e. 1位英文字母（先小写后大写）开头 + 1位到8位数字
   f. 1位到8位数字 + 1位字母结尾
   g. 1位到8位数字+小写英文字母混合
-  h. 1位到8位数字+大小写英文字母混合
+  h. 1位到8位数字+大写英文字母混合
+  i. 1位到8位数字+大小写英文字母混合
 """
 
 import itertools
@@ -20,6 +21,7 @@ LOWERCASE = [chr(c) for c in range(ord("a"), ord("z") + 1)]
 UPPERCASE = [chr(c) for c in range(ord("A"), ord("Z") + 1)]
 LETTERS = LOWERCASE + UPPERCASE
 ALPHANUM_LOWER = DIGITS + LOWERCASE
+ALPHANUM_UPPER = DIGITS + UPPERCASE
 ALPHANUM_ALL = DIGITS + LOWERCASE + UPPERCASE
 
 # 规则编号常量
@@ -30,7 +32,8 @@ RULE_MIXED_ALPHA = 4
 RULE_LETTER_PREFIX_DIGIT = 5
 RULE_DIGIT_LETTER_SUFFIX = 6
 RULE_MIXED_LOWER = 7
-RULE_MIXED_ALL = 8
+RULE_MIXED_UPPER = 8
+RULE_MIXED_ALL = 9
 
 # 规则名称映射
 RULE_NAMES = {
@@ -41,6 +44,7 @@ RULE_NAMES = {
     RULE_LETTER_PREFIX_DIGIT: "字母开头+数字",
     RULE_DIGIT_LETTER_SUFFIX: "数字+字母结尾",
     RULE_MIXED_LOWER: "数字+小写混合",
+    RULE_MIXED_UPPER: "数字+大写混合",
     RULE_MIXED_ALL: "数字+大小写混合",
 }
 
@@ -138,6 +142,7 @@ def get_rule_generator(rule_id: int):
         RULE_LETTER_PREFIX_DIGIT: lambda: generate_letter_prefix_digit(),
         RULE_DIGIT_LETTER_SUFFIX: lambda: generate_digit_letter_suffix(),
         RULE_MIXED_LOWER: lambda: generate_mixed(charset=ALPHANUM_LOWER),
+        RULE_MIXED_UPPER: lambda: generate_mixed(charset=ALPHANUM_UPPER),
         RULE_MIXED_ALL: lambda: generate_mixed(charset=ALPHANUM_ALL),
     }
     return generators.get(rule_id)
@@ -153,5 +158,6 @@ def get_all_rule_ids():
         RULE_LETTER_PREFIX_DIGIT,
         RULE_DIGIT_LETTER_SUFFIX,
         RULE_MIXED_LOWER,
+        RULE_MIXED_UPPER,
         RULE_MIXED_ALL,
     ]
