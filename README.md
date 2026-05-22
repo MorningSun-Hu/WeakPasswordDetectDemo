@@ -5,11 +5,12 @@
 
 ## 功能特性
 
-- 5 种枚举规则：纯数字、字母头+数字、数字+字母尾、数字+小写混合、数字+全字母混合
-- 3 个工作线程并发枚举（利用 Python 3.13 无 GIL 特性实现真正并行）
-- 实时进度显示：各线程尝试次数、当前规则、累计耗时
-- 提前终止：按 Ctrl+C 随时停止并输出截止状态
-- Web API 预留接口（REST + WebSocket），便于后续扩展 GUI
+- 8 种枚举规则：纯数字、纯小写字母、纯大写字母、大小写混合字母、字母头+数字、数字+字母尾、数字+小写混合、数字+全字母混合
+- Web 界面：自动打开浏览器，实时显示破解进度（数字雨动画）
+- 多线程/多进程并发（利用 Python 3.13 无 GIL 特性）
+- 实时进度显示：各 Worker 尝试次数、当前规则、累计耗时
+- 提前终止：按 Ctrl+C 或点击停止按钮随时停止
+- 支持 Windows 打包为独立 exe，无需安装 Python 即可运行
 
 ## 环境要求
 
@@ -26,19 +27,24 @@ cd weak-password-bruteforce
 # 使用 uv 安装 Python 3.13 free-threading 版本
 uv python install 3.13t
 
-# 运行程序
+# 运行程序 (默认启动 Web 服务并自动打开浏览器)
 uv run --python 3.13t main.py
 ```
+
+运行后会自动打开默认浏览器访问 `http://127.0.0.1:8000`，控制台会显示服务地址。
 
 ## 枚举规则说明
 
 | 规则 | 描述 | 示例 | 数量级 |
 |------|------|------|--------|
-| A | 1-8 位纯数字 | 0 ~ 99999999 | ~10^8 |
-| B | 1位字母开头 + 1-8位数字 | a0 ~ Z99999999 | ~52*10^8 |
-| C | 1-8位数字 + 1位字母结尾 | 0a ~ 99999999Z | ~52*10^8 |
-| D | 1-8位数字+小写混合 | 0 ~ zzzzzzzz | ~36^8 |
-| E | 1-8位数字+大小写混合 | 0 ~ ZZZZZZZZ | ~62^8 |
+| 1 | 1-8 位纯数字 | 0 ~ 99999999 | ~10^8 |
+| 2 | 1-8 位纯小写字母 | a ~ zzzzzzzz | ~26^8 |
+| 3 | 1-8 位纯大写字母 | A ~ ZZZZZZZZ | ~26^8 |
+| 4 | 1-8 位大小写混合字母 | a ~ ZZZZZZZZ | ~52^8 |
+| 5 | 1位字母开头 + 1-8位数字 | a0 ~ Z99999999 | ~52*10^8 |
+| 6 | 1-8位数字 + 1位字母结尾 | 0a ~ 99999999Z | ~52*10^8 |
+| 7 | 1-8位数字+小写混合 | 0 ~ zzzzzzzz | ~36^8 |
+| 8 | 1-8位数字+大小写混合 | 0 ~ ZZZZZZZZ | ~62^8 |
 
 ## 运行截图
 
@@ -77,16 +83,26 @@ Python 3.13 Free-threading 版本
 ```
 weak-password-bruteforce/
 ├── pyproject.toml
-├── main.py                 # 程序入口
+├── bruteforce.spec       # PyInstaller 打包配置
+├── build.ps1             # Windows 打包脚本
+├── main.py               # 程序入口 (Web 模式)
 ├── brute_force/
-│   ├── engine.py           # 核心引擎
-│   ├── thread_manager.py   # 线程管理
-│   ├── shared_state.py     # 共享状态
-│   ├── worker.py           # 工作线程
-│   ├── enum_rules.py       # 枚举规则
-│   ├── ui_interface.py     # UI 回调接口
-│   ├── cli.py              # CLI 界面
-│   └── web_api.py          # Web API 预留
+│   ├── engine.py         # 核心引擎
+│   ├── thread_manager.py # 线程管理
+│   ├── process_manager.py# 进程管理
+│   ├── shared_state.py   # 共享状态
+│   ├── worker.py         # Worker 实现
+│   ├── enum_rules.py     # 枚举规则 (8种)
+│   ├── ui_interface.py   # UI 回调接口
+│   ├── cli.py            # CLI 界面
+│   ├── server.py         # FastAPI Web 服务
+│   ├── ws_manager.py     # WebSocket 管理
+│   ├── schemas.py        # Pydantic 数据模型
+│   ├── callback.py       # Web 回调
+│   ├── utils.py          # 工具函数
+│   └── static/           # 前端静态文件
+│       ├── index.html
+│       └── assets/
 └── tests/
     ├── test_enum_rules.py
     ├── test_shared_state.py
