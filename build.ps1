@@ -21,7 +21,7 @@ uv python install 3.13t
 Write-Host ""
 
 # 安装依赖
-Write-Host "[2/5] 安装项目依赖..."
+Write-Host "[2/5] 安装项目依赖（包含 websockets）..."
 uv sync --python 3.13t
 Write-Host ""
 
