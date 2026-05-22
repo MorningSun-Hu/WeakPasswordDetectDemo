@@ -303,6 +303,60 @@
             height: 80px;
             object-fit: contain;
         }
+        
+        /* Toast 通知样式 */
+        .toast {
+            background: rgba(20, 20, 20, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px 20px;
+            color: #fff;
+            font-size: 14px;
+            min-width: 200px;
+            max-width: 400px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            pointer-events: auto;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            animation: slideDown 0.3s ease-out;
+        }
+        
+        .toast.toast-success {
+            border-left: 4px solid #22c55e;
+        }
+        
+        .toast.toast-error {
+            border-left: 4px solid #ef4444;
+        }
+        
+        .toast.toast-info {
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .toast.toast-hiding {
+            animation: fadeOut 0.3s ease-in forwards;
+        }
+        
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        /* 动画 */
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -497,6 +551,11 @@
         </div>
     </div>
     
+    <!-- Toast 通知容器 -->
+    <div id="toast-container" class="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-3" style="pointer-events: none;">
+        <!-- Toast 动态插入此处 -->
+    </div>
+
     <script>
         // ==================== 数字雨动画 ====================
         
@@ -791,7 +850,65 @@
             errorEl.classList.add('hidden');
         }
         
-        // ==================== WebSocket 连接管理 ====================
+        // ==================== Toast 通知系统 ====================
+        
+        /**
+         * 显示 Toast 通知
+         * @param {string} message - 通知内容
+         * @param {string} type - 类型：success / error / info
+         * @param {number} duration - 显示时长（毫秒），0 表示不自动消失
+         */
+        function showToast(message, type = 'info', duration = 4000) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            
+            // 图标
+            let icon = '';
+            if (type === 'success') icon = '✓';
+            else if (type === 'error') icon = '✕';
+            else icon = 'ℹ';
+            
+            toast.innerHTML = `<span style="font-weight: bold; font-size: 16px;">${icon}</span><span>${message}</span>`;
+            
+            container.appendChild(toast);
+            
+            if (duration > 0) {
+                setTimeout(() => {
+                    toast.classList.add('toast-hiding');
+                    toast.addEventListener('animationend', () => toast.remove());
+                }, duration);
+            }
+        }
+        
+        // ==================== 加载状态管理 ====================
+        
+        /**
+         * 设置按钮加载状态
+         * @param {HTMLElement} btn - 按钮元素
+         * @param {boolean} loading - 是否加载中
+         * @param {string} originalText - 原始文字（如果是文本按钮）
+         */
+        function setButtonLoading(btn, loading, originalText = '') {
+            if (loading) {
+                btn.disabled = true;
+                btn.dataset.originalText = btn.textContent;
+                btn.innerHTML = `
+                    <svg class="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                        <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"></path>
+                    </svg>
+                    <span style="margin-left: 8px;">加载中...</span>
+                `;
+                btn.style.opacity = '0.7';
+                btn.style.cursor = 'not-allowed';
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = originalText || btn.dataset.originalText;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+            }
+        }
         
         let ws = null;
         let wsReconnectTimer = null;
@@ -1219,12 +1336,16 @@
                 }
                 
                 try {
-                    // 调用后端 API 启动破解任务
+                    // 显示加载状态
+                    setButtonLoading(startBtn, true, '开始');
                     hideInputError();
+                    
+                    // 调用后端 API 启动破解任务
                     const startResult = await startCrack(password);
                     
-                    // 切换到破解页
+                    // 启动成功，切换到破解页
                     showView('view-cracking');
+                    showToast('破解任务已启动', 'success');
                     
                     // 启动计时器
                     crackTimer.start();
@@ -1245,6 +1366,10 @@
                     console.log('破解任务已启动:', startResult);
                 } catch (error) {
                     showInputError(`启动失败: ${error.message}`);
+                    showToast(`启动失败: ${error.message}`, 'error');
+                } finally {
+                    // 恢复按钮状态
+                    setButtonLoading(startBtn, false, '开始');
                 }
             });
             
@@ -1282,9 +1407,11 @@
                     btnPlay.classList.add('hidden');
                     btnPause.classList.remove('hidden');
                     
+                    showToast('破解已恢复', 'success');
                     console.log('破解任务已恢复');
                 } catch (error) {
                     console.error('恢复任务失败:', error);
+                    showToast('恢复失败', 'error');
                 }
             });
             
@@ -1309,9 +1436,11 @@
                     btnPause.classList.add('hidden');
                     btnPlay.classList.remove('hidden');
                     
+                    showToast('已暂停', 'info');
                     console.log('破解任务已暂停');
                 } catch (error) {
                     console.error('暂停任务失败:', error);
+                    showToast('暂停失败', 'error');
                 }
             });
             
