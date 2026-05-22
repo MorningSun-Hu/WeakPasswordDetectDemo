@@ -2,10 +2,13 @@
 
 按需求定义的顺序生成密码候选：
   a. 1位到8位纯数字
-  b. 1位英文字母（先小写后大写）开头 + 1位到8位数字
-  c. 1位到8位数字 + 1位字母结尾
-  d. 1位到8位数字+小写英文字母混合
-  e. 1位到8位数字+大小写英文字母混合
+  b. 1位到8位纯小写字母
+  c. 1位到8位纯大写字母
+  d. 1位到8位大小写混合字母
+  e. 1位英文字母（先小写后大写）开头 + 1位到8位数字
+  f. 1位到8位数字 + 1位字母结尾
+  g. 1位到8位数字+小写英文字母混合
+  h. 1位到8位数字+大小写英文字母混合
 """
 
 import itertools
@@ -21,14 +24,20 @@ ALPHANUM_ALL = DIGITS + LOWERCASE + UPPERCASE
 
 # 规则编号常量
 RULE_DIGITS = 1
-RULE_LETTER_PREFIX_DIGIT = 2
-RULE_DIGIT_LETTER_SUFFIX = 3
-RULE_MIXED_LOWER = 4
-RULE_MIXED_ALL = 5
+RULE_LOWER_ALPHA = 2
+RULE_UPPER_ALPHA = 3
+RULE_MIXED_ALPHA = 4
+RULE_LETTER_PREFIX_DIGIT = 5
+RULE_DIGIT_LETTER_SUFFIX = 6
+RULE_MIXED_LOWER = 7
+RULE_MIXED_ALL = 8
 
 # 规则名称映射
 RULE_NAMES = {
     RULE_DIGITS: "纯数字",
+    RULE_LOWER_ALPHA: "纯小写字母",
+    RULE_UPPER_ALPHA: "纯大写字母",
+    RULE_MIXED_ALPHA: "大小写混合字母",
     RULE_LETTER_PREFIX_DIGIT: "字母开头+数字",
     RULE_DIGIT_LETTER_SUFFIX: "数字+字母结尾",
     RULE_MIXED_LOWER: "数字+小写混合",
@@ -43,6 +52,36 @@ def generate_digits(min_len: int = 1, max_len: int = 8):
     """
     for length in range(min_len, max_len + 1):
         for combo in itertools.product(DIGITS, repeat=length):
+            yield "".join(combo)
+
+
+def generate_lower_alpha(min_len: int = 1, max_len: int = 8):
+    """生成 1位到8位纯小写字母
+
+    顺序: a, b, ..., z, aa, ab, ..., zz, aaa, ...
+    """
+    for length in range(min_len, max_len + 1):
+        for combo in itertools.product(LOWERCASE, repeat=length):
+            yield "".join(combo)
+
+
+def generate_upper_alpha(min_len: int = 1, max_len: int = 8):
+    """生成 1位到8位纯大写字母
+
+    顺序: A, B, ..., Z, AA, AB, ..., ZZ, AAA, ...
+    """
+    for length in range(min_len, max_len + 1):
+        for combo in itertools.product(UPPERCASE, repeat=length):
+            yield "".join(combo)
+
+
+def generate_mixed_alpha(min_len: int = 1, max_len: int = 8):
+    """生成 1位到8位大小写混合字母
+
+    顺序: a, b, ..., z, A, B, ..., Z, aa, ab, ..., ZZ, ...
+    """
+    for length in range(min_len, max_len + 1):
+        for combo in itertools.product(LETTERS, repeat=length):
             yield "".join(combo)
 
 
@@ -93,6 +132,9 @@ def get_rule_generator(rule_id: int):
     """
     generators = {
         RULE_DIGITS: lambda: generate_digits(),
+        RULE_LOWER_ALPHA: lambda: generate_lower_alpha(),
+        RULE_UPPER_ALPHA: lambda: generate_upper_alpha(),
+        RULE_MIXED_ALPHA: lambda: generate_mixed_alpha(),
         RULE_LETTER_PREFIX_DIGIT: lambda: generate_letter_prefix_digit(),
         RULE_DIGIT_LETTER_SUFFIX: lambda: generate_digit_letter_suffix(),
         RULE_MIXED_LOWER: lambda: generate_mixed(charset=ALPHANUM_LOWER),
@@ -105,6 +147,9 @@ def get_all_rule_ids():
     """返回所有规则编号列表（按执行顺序）"""
     return [
         RULE_DIGITS,
+        RULE_LOWER_ALPHA,
+        RULE_UPPER_ALPHA,
+        RULE_MIXED_ALPHA,
         RULE_LETTER_PREFIX_DIGIT,
         RULE_DIGIT_LETTER_SUFFIX,
         RULE_MIXED_LOWER,
