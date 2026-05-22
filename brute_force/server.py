@@ -22,16 +22,17 @@ from brute_force.utils import validate_password
 from brute_force.ws_manager import manager
 
 
-def _get_base_dir() -> Path:
-    """获取运行目录（兼容 PyInstaller 打包后的环境）"""
+def _get_static_dir() -> Path:
+    """获取静态文件目录路径（兼容 PyInstaller 打包后的环境）"""
     if getattr(sys, 'frozen', False):
-        # PyInstaller 打包后的临时目录
-        return Path(sys._MEIPASS)
-    return Path(__file__).parent
+        # PyInstaller 打包后，文件位于 _MEIPASS/brute_force/static
+        return Path(sys._MEIPASS) / "brute_force" / "static"
+    # 开发环境，文件位于 brute_force/static
+    return Path(__file__).parent / "static"
 
 
 # 静态文件目录的路径
-STATIC_DIR = _get_base_dir() / "static"
+STATIC_DIR = _get_static_dir()
 
 
 # 全局状态
