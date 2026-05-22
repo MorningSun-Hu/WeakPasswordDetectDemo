@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -21,8 +22,16 @@ from brute_force.utils import validate_password
 from brute_force.ws_manager import manager
 
 
-# 静态文件目录路径
-STATIC_DIR = Path(__file__).parent / "static"
+def _get_base_dir() -> Path:
+    """获取运行目录（兼容 PyInstaller 打包后的环境）"""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller 打包后的临时目录
+        return Path(sys._MEIPASS)
+    return Path(__file__).parent
+
+
+# 静态文件目录的路径
+STATIC_DIR = _get_base_dir() / "static"
 
 
 # 全局状态

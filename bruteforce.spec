@@ -5,13 +5,16 @@ import os
 
 block_cipher = None
 
+# 获取项目根目录（spec 文件所在目录）
+project_root = os.path.dirname(SPEC)
+
 # 收集静态文件
-static_dir = os.path.join(os.path.dirname(__file__), 'brute_force', 'static')
+static_dir = os.path.join(project_root, 'brute_force', 'static')
 static_files = []
 for root, dirs, files in os.walk(static_dir):
     for file in files:
         full_path = os.path.join(root, file)
-        rel_path = os.path.relpath(full_path, os.path.dirname(__file__))
+        rel_path = os.path.relpath(full_path, project_root)
         static_files.append((full_path, os.path.dirname(rel_path)))
 
 a = Analysis(
