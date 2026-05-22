@@ -6,11 +6,14 @@
 
 import sys
 import os
+import argparse
 import multiprocessing
 import webbrowser
 import socket
 import time
 from threading import Thread
+
+from brute_force.cli import run_cli
 
 
 def find_free_port(start_port: int = 8000, end_port: int = 8100) -> int:
@@ -36,7 +39,15 @@ def run_web_server(port: int):
 def main():
     """主入口函数"""
     multiprocessing.freeze_support()
-    
+
+    parser = argparse.ArgumentParser(description="弱口令枚举暴力破解演示程序")
+    parser.add_argument("--cli", action="store_true", help="启动 CLI 模式 (默认启动 Web 模式)")
+    args = parser.parse_args()
+
+    if args.cli:
+        run_cli()
+        return
+
     # 查找可用端口
     port = find_free_port()
     url = f"http://127.0.0.1:{port}"
