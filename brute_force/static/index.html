@@ -439,12 +439,13 @@
             <!-- 结果信息 -->
             <div class="flex flex-col items-start text-left ml-12 md:ml-24" style="gap: 0.5rem;">
                 <p class="text-white text-lg attempts-display" id="success-attempts">累计尝试 0 次</p>
-                <p class="timer-display" id="success-timer">00:00:00.000</p>
+                <div class="relative inline-flex" style="gap: 0.5rem; line-height: 1;">
+                    <p class="timer-display" id="success-timer">00:00:00.000</p>
+                    <!-- 皇冠图标 -->
+                    <img src="/assets/crown.png" alt="破解成功" class="crown-icon" style="position: absolute; top: -0.75rem; right: -2.5rem; width: 50px; height: auto;">
+                </div>
                 
-                <!-- 皇冠图标 -->
-                <img src="/assets/crown.png" alt="破解成功" class="crown-icon" style="margin: 0.5rem 0;">
-                
-                <p class="text-white text-xl status-display" id="success-password">密码：******</p>
+                <p class="text-white text-4xl status-display" id="success-password" style="line-height: 1.1;">密码：******</p>
             </div>
             
             <!-- 返回按钮 -->
@@ -542,17 +543,21 @@
         // ==================== 计时器组件 ====================
         
         /**
-         * 格式化时间为 HH:MM:SS.mmm
-         * @param {number} ms - 毫秒数
+         * 格式化时间为 HH:MM:SS.mmm.uuuu
+         * @param {number} ms - 毫秒数 (浮点数)
          * @returns {string} 格式化后的时间字符串
          */
         function formatTime(ms) {
             const hours = Math.floor(ms / 3600000);
             const minutes = Math.floor((ms % 3600000) / 60000);
             const seconds = Math.floor((ms % 60000) / 1000);
-            const millis = ms % 1000;
             
-            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
+            // 分离毫秒和微秒
+            const msRemainder = ms % 1000; // 例如: 569.1580...
+            const millis = Math.floor(msRemainder); // 569
+            const micros = Math.round((msRemainder - millis) * 10000); // 1580
+            
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}.${String(micros).padStart(4, '0')}`;
         }
         
         /**
@@ -740,11 +745,8 @@
             }
             if (viewId === 'view-success') {
                 const canvas = document.getElementById('matrix-canvas-success');
-                if (!matrixIntervals.success) {
-                    matrixIntervals.success = startMatrixRain(canvas);
-                }
-                // 进入成功页后停止动画
-                setTimeout(() => stopMatrixRain('success'), 100);
+                drawStaticMatrixRain(canvas);
+                matrixIntervals.success = true;
             }
             if (viewId === 'view-stopped') {
                 const canvas = document.getElementById('matrix-canvas-stopped');
@@ -907,7 +909,14 @@
         /**
          * 找到密码处理
          */
-        function handleTaskFound(data) {
+        async function handleTaskFound(data) {
+            // 立即调用后端停止任务，释放锁并清理资源
+            try {
+                await stopCrack();
+            } catch (e) {
+                console.warn('破解成功后停止任务失败:', e);
+            }
+            
             // 停止计时器
             crackTimer.stop();
             
@@ -1008,6 +1017,50 @@
                 return await response.json();
             } catch (error) {
                 console.error('启动破解任务失败:', error);
+                throw error;
+            }
+        }
+        
+        /**
+         * 暂停破解任务
+         * @returns {Promise<Object>} 暂停响应
+         */
+        async function pauseCrack() {
+            try {
+                const response = await fetch('/api/v1/crack/pause', {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || '暂停失败');
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('暂停破解任务失败:', error);
+                throw error;
+            }
+        }
+        
+        /**
+         * 恢复破解任务
+         * @returns {Promise<Object>} 恢复响应
+         */
+        async function resumeCrack() {
+            try {
+                const response = await fetch('/api/v1/crack/resume', {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || '恢复失败');
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('恢复破解任务失败:', error);
                 throw error;
             }
         }
@@ -1205,32 +1258,61 @@
             const btnPlay = document.getElementById('btn-play');
             const btnPause = document.getElementById('btn-pause');
             
-            btnPlay.addEventListener('click', () => {
-                // 恢复破解：继续计时器 + 继续动画
-                crackTimer.resume();
-                crackTimer.updateDisplay('cracking-timer');
-                
-                // 恢复数字雨动画
-                const canvas = document.getElementById('matrix-canvas-cracking');
-                if (!matrixIntervals.cracking) {
-                    matrixIntervals.cracking = startMatrixRain(canvas);
+            btnPlay.addEventListener('click', async () => {
+                try {
+                    // 恢复破解：调用后端 API
+                    await resumeCrack();
+                    
+                    // 恢复计时器
+                    crackTimer.resume();
+                    crackTimer.updateDisplay('cracking-timer');
+                    
+                    // 恢复数字雨动画
+                    const canvas = document.getElementById('matrix-canvas-cracking');
+                    if (!matrixIntervals.cracking) {
+                        matrixIntervals.cracking = startMatrixRain(canvas);
+                    }
+                    
+                    // 恢复状态更新
+                    if (!statusUpdateInterval) {
+                        statusUpdateInterval = setInterval(updateWorkStatus, 500);
+                    }
+                    
+                    // 切换按钮显示
+                    btnPlay.classList.add('hidden');
+                    btnPause.classList.remove('hidden');
+                    
+                    console.log('破解任务已恢复');
+                } catch (error) {
+                    console.error('恢复任务失败:', error);
                 }
-                
-                // 切换按钮显示
-                btnPlay.classList.add('hidden');
-                btnPause.classList.remove('hidden');
             });
             
-            btnPause.addEventListener('click', () => {
-                // 暂停破解：暂停计时器 + 停止动画
-                crackTimer.pause();
-                
-                // 停止数字雨动画
-                stopMatrixRain('cracking');
-                
-                // 切换按钮显示
-                btnPause.classList.add('hidden');
-                btnPlay.classList.remove('hidden');
+            btnPause.addEventListener('click', async () => {
+                try {
+                    // 暂停破解：调用后端 API
+                    await pauseCrack();
+                    
+                    // 暂停计时器
+                    crackTimer.pause();
+                    
+                    // 停止数字雨动画
+                    stopMatrixRain('cracking');
+                    
+                    // 停止状态更新
+                    if (statusUpdateInterval) {
+                        clearInterval(statusUpdateInterval);
+                        statusUpdateInterval = null;
+                    }
+                    
+                    // 切换按钮显示
+                    btnPause.classList.add('hidden');
+                    btnPlay.classList.remove('hidden');
+                    
+                    console.log('破解任务已暂停');
+                } catch (error) {
+                    console.error('暂停任务失败:', error);
+                }
             });
             
             document.getElementById('btn-crack-stop').addEventListener('click', async () => {

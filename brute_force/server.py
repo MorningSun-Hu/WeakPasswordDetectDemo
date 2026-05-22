@@ -34,12 +34,14 @@ _app_state = {
 }
 
 
-def _run_engine(engine: BruteForceEngine, password: str) -> None:
+def _run_engine(engine: BruteForceEngine, password: str, loop, lock) -> None:
     """在线程中运行引擎（阻塞调用）"""
     try:
         engine.start(password)
     finally:
-        pass
+        # 引擎结束后释放锁（需通过 call_soon_threadsafe 回到主线程释放 asyncio.Lock）
+        # 使用 lock.locked() 检查避免与 stop_crack 中的 release 冲突导致 RuntimeError
+        loop.call_soon_threadsafe(lambda: lock.release() if lock.locked() else None)
 
 
 @asynccontextmanager
@@ -121,7 +123,9 @@ async def start_crack(request: StartRequest):
         if not executor:
             raise HTTPException(status_code=503, detail="线程池未就绪")
 
-        executor.submit(_run_engine, engine, request.password)
+        # 获取当前事件循环，用于在线程结束后释放锁
+        loop = asyncio.get_running_loop()
+        executor.submit(_run_engine, engine, request.password, loop, lock)
 
         return StartResponse(
             status="started",
@@ -196,6 +200,28 @@ async def stop_crack():
         total_attempts=engine.get_status().get("total_attempts", 0),
         elapsed=engine.get_status().get("elapsed", 0.0),
     )
+
+
+@app.post("/api/v1/crack/pause")
+async def pause_crack():
+    """暂停当前任务"""
+    engine = _app_state.get("engine")
+    if not engine:
+        return {"status": "no_running_task"}
+    
+    engine.pause()
+    return {"status": "paused"}
+
+
+@app.post("/api/v1/crack/resume")
+async def resume_crack():
+    """恢复当前任务"""
+    engine = _app_state.get("engine")
+    if not engine:
+        return {"status": "no_running_task"}
+    
+    engine.resume()
+    return {"status": "resumed"}
 
 
 @app.get("/api/v1/crack/result", response_model=ResultResponse)

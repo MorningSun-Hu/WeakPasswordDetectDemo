@@ -83,6 +83,12 @@ def _run_worker(worker_id: int, target: str, shared_state, rule_ids: list, log=N
                 if shared_state.is_terminated():
                     break
 
+                # 检查是否暂停
+                while shared_state.is_paused():
+                    if shared_state.is_terminated():
+                        break
+                    time.sleep(0.05)
+
                 if candidate == target:
                     _log("FOUND PASSWORD: %s" % candidate)
                     shared_state.set_found(candidate, worker_id)

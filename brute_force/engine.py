@@ -132,6 +132,14 @@ class BruteForceEngine:
         self._running = False
         self.manager.terminate_all()
 
+    def pause(self) -> None:
+        """暂停破解任务"""
+        self.shared_state.pause()
+
+    def resume(self) -> None:
+        """恢复破解任务"""
+        self.shared_state.resume()
+
     def get_status(self) -> dict:
         workers = []
         for i in range(self.worker_count):

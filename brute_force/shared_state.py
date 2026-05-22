@@ -18,6 +18,7 @@ class SharedStateThreadMode:
         self.found_worker_id = -1
         self.attempts = [0] * worker_count
         self.terminate_flag = False
+        self.paused = False
         self.current_rule = [0] * worker_count
         self.start_time = 0.0
         self.end_time = 0.0
@@ -28,6 +29,7 @@ class SharedStateThreadMode:
             self.found_password = ""
             self.found_worker_id = -1
             self.terminate_flag = False
+            self.paused = False
             self.start_time = 0.0
             self.end_time = 0.0
             self.attempts = [0] * worker_count
@@ -68,6 +70,18 @@ class SharedStateThreadMode:
         with self._lock:
             return self.terminate_flag or self.found
 
+    def pause(self):
+        with self._lock:
+            self.paused = True
+
+    def resume(self):
+        with self._lock:
+            self.paused = False
+
+    def is_paused(self) -> bool:
+        with self._lock:
+            return self.paused
+
 
 class SharedStateProcessMode:
     """多进程模式下的共享状态实现"""
@@ -81,6 +95,7 @@ class SharedStateProcessMode:
         self.found_password = multiprocessing.Array('c', 256)
         
         self.terminate_flag = multiprocessing.Value('b', False)
+        self.paused = multiprocessing.Value('b', False)
         
         self.attempts = [multiprocessing.Value('q', 0) for _ in range(worker_count)]
         self.current_rule = [multiprocessing.Value('i', 0) for _ in range(worker_count)]
@@ -95,6 +110,7 @@ class SharedStateProcessMode:
             self.found_password.value = b"\x00"
             self.found_worker_id.value = -1
             self.terminate_flag.value = False
+            self.paused.value = False
             self.start_time.value = 0.0
             self.end_time.value = 0.0
             for i in range(len(self.attempts)):
@@ -142,6 +158,15 @@ class SharedStateProcessMode:
     def is_terminated(self) -> bool:
         # 直接读取，避免争抢锁导致卡死
         return self.terminate_flag.value or self.found.value
+
+    def pause(self):
+        self.paused.value = True
+
+    def resume(self):
+        self.paused.value = False
+
+    def is_paused(self) -> bool:
+        return self.paused.value
 
 
 def create_shared_state(worker_count: int, use_multiprocessing: bool):
