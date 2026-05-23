@@ -36,6 +36,11 @@ class ProcessManager:
     def is_running(self) -> bool:
         return any(p.is_alive() for p in self.processes)
 
+    def wait_for_completion(self, timeout: float = 2.0) -> bool:
+        for proc in self.processes:
+            proc.join(timeout=timeout)
+        return True
+
     def terminate_all(self) -> None:
         print("Terminating all workers...", file=sys.stderr)
         self.shared_state.terminate()

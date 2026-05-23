@@ -7,9 +7,11 @@ import sys
 import os
 import time
 import signal
+import threading
 
 # 立即尝试写入启动日志
 _log_file = "worker_%d.log" % os.getpid()
+_thread_local = threading.local()
 try:
     with open(_log_file, "w", encoding="utf-8") as _f:
         _f.write("Worker PID %d starting...\n" % os.getpid())
@@ -20,7 +22,8 @@ except:
 
 def _log(msg):
     try:
-        with open(_log_file, "a", encoding="utf-8") as f:
+        log_file = getattr(_thread_local, "log_file", _log_file)
+        with open(log_file, "a", encoding="utf-8") as f:
             f.write(msg + "\n")
             f.flush()
     except:
@@ -47,6 +50,7 @@ BATCH_SIZE = 10000
 def worker_process(worker_id: int, target: str, shared_state, worker_count: int, max_len: int = 8) -> None:
     """工作进程入口函数"""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    _thread_local.log_file = "worker_%d_%d.log" % (os.getpid(), worker_id)
     
     _log("worker_process called with ID: %d" % worker_id)
     try:
@@ -59,6 +63,7 @@ def worker_process(worker_id: int, target: str, shared_state, worker_count: int,
         _log(traceback.format_exc())
 
 def worker_thread(worker_id: int, target: str, shared_state, worker_count: int, max_len: int = 8) -> None:
+    _thread_local.log_file = "worker_thread_%d.log" % worker_id
     _log("worker_thread called with ID: %d" % worker_id)
     _run_worker(worker_id, target, shared_state, worker_count, max_len, sys.stdout)
 
@@ -79,6 +84,9 @@ def _run_worker(worker_id: int, target: str, shared_state, worker_count: int, ma
         rule_id, start, end = shared_state.get_next_task(worker_count, max_len)
         
         if rule_id is None:
+            if start == -1 and end == -1:
+                _log("Worker %d: termination requested, exiting." % worker_id)
+                break
             # 真正的无任务（所有规则已完成）
             empty_count += 1
             _log("Worker %d: no task, retry %d/%d" % (worker_id, empty_count, max_empty_retries))
@@ -146,6 +154,7 @@ def _process_enum_rule(worker_id: int, target: str, shared_state, rule_id: int, 
     generator = get_rule_generator(rule_id, length)
     if generator is None:
         _log("Generator for rule %d length %d is None" % (rule_id, length))
+        _decrement_rule_active(shared_state)
         return
     
     local_count = 0
@@ -165,6 +174,7 @@ def _process_enum_rule(worker_id: int, target: str, shared_state, rule_id: int, 
                 shared_state.set_found(candidate, worker_id)
                 local_count += 1
                 _flush_attempts(worker_id, local_count, shared_state)
+                _decrement_rule_active(shared_state)
                 return
 
             local_count += 1
@@ -179,6 +189,7 @@ def _process_enum_rule(worker_id: int, target: str, shared_state, rule_id: int, 
 
     if local_count > 0:
         _flush_attempts(worker_id, local_count, shared_state)
+    _decrement_rule_active(shared_state)
 
 def _flush_attempts(worker_id: int, count: int, shared_state) -> None:
     try:
@@ -200,3 +211,15 @@ def _decrement_dict_active(shared_state) -> None:
                 shared_state.dict_active_workers -= 1
     except Exception as e:
         _log("Decrement dict active error: %s" % e)
+
+def _decrement_rule_active(shared_state) -> None:
+    """递减当前枚举规则活跃worker计数器"""
+    try:
+        if hasattr(shared_state, '_task_lock'):
+            with shared_state._task_lock:
+                shared_state.rule_active_workers.value -= 1
+        elif hasattr(shared_state, '_lock'):
+            with shared_state._lock:
+                shared_state.rule_active_workers -= 1
+    except Exception as e:
+        _log("Decrement rule active error: %s" % e)

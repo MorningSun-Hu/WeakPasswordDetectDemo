@@ -23,6 +23,7 @@ class SharedStateThreadMode:
         # 动态任务队列
         self.current_rule = 0
         self.length_start = 1    # 当前规则的起始长度
+        self.rule_active_workers = 0  # 正在处理当前枚举规则的worker数
         
         # 弱口令库专用
         self.dict_lines_loaded = False
@@ -43,6 +44,7 @@ class SharedStateThreadMode:
             self.paused = False
             self.current_rule = 0
             self.length_start = 1
+            self.rule_active_workers = 0
             # 不清零字典状态（字典只需加载一次，reset只重置运行时状态）
             self.dict_next_line = 0
             self.dict_active_workers = 0
@@ -113,7 +115,7 @@ class SharedStateThreadMode:
         """
         with self._lock:
             if self.terminate_flag or self.found:
-                return (None, 0, 0)
+                return (None, -1, -1)
             
             # 检查当前规则是否有更多任务
             if self.current_rule == 0:
@@ -139,15 +141,19 @@ class SharedStateThreadMode:
             
             # 枚举规则：按长度分段
             if self.length_start > max_len:
-                # 当前规则完成，进入下一规则
-                self.current_rule += 1
-                self.length_start = 1
-                if self.current_rule > 7:
-                    return (None, 0, 0)
+                if self.rule_active_workers <= 0:
+                    # 当前规则全部完成，进入下一规则
+                    self.current_rule += 1
+                    self.length_start = 1
+                    if self.current_rule > 7:
+                        return (None, 0, 0)
+                else:
+                    return (0, -1, -1)  # 等待当前规则的活跃worker完成
             
             # 每次分配一个长度
             length = self.length_start
             self.length_start += 1
+            self.rule_active_workers += 1
             return (self.current_rule, length, length)
 
     def get_current_rule(self) -> int:
@@ -173,6 +179,7 @@ class SharedStateProcessMode:
         # 动态任务队列
         self.current_rule = multiprocessing.Value('i', 0)
         self.length_start = multiprocessing.Value('i', 1)
+        self.rule_active_workers = multiprocessing.Value('i', 0)
         
         # 弱口令库专用
         self.dict_lines_loaded = multiprocessing.Value('b', False)
@@ -194,6 +201,7 @@ class SharedStateProcessMode:
             self.paused.value = False
             self.current_rule.value = 0
             self.length_start.value = 1
+            self.rule_active_workers.value = 0
             self.dict_lines_loaded.value = False
             self.dict_total_lines.value = 0
             self.dict_next_line.value = 0
@@ -267,7 +275,7 @@ class SharedStateProcessMode:
         """
         with self._task_lock:
             if self.terminate_flag.value or self.found.value:
-                return (None, 0, 0)
+                return (None, -1, -1)
             
             # 检查当前规则是否有更多任务
             if self.current_rule.value == 0:
@@ -291,13 +299,17 @@ class SharedStateProcessMode:
             
             # 枚举规则：按长度分段
             if self.length_start.value > max_len:
-                self.current_rule.value += 1
-                self.length_start.value = 1
-                if self.current_rule.value > 7:
-                    return (None, 0, 0)
+                if self.rule_active_workers.value <= 0:
+                    self.current_rule.value += 1
+                    self.length_start.value = 1
+                    if self.current_rule.value > 7:
+                        return (None, 0, 0)
+                else:
+                    return (0, -1, -1)
             
             length = self.length_start.value
             self.length_start.value += 1
+            self.rule_active_workers.value += 1
             return (self.current_rule.value, length, length)
 
     def get_current_rule(self) -> int:

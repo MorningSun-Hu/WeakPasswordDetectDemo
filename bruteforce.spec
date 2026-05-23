@@ -17,6 +17,11 @@ for root, dirs, files in os.walk(static_dir):
         rel_path = os.path.relpath(full_path, project_root)
         static_files.append((full_path, os.path.dirname(rel_path)))
 
+# 收集弱口令库数据文件
+data_file = os.path.join(project_root, 'brute_force', 'data', 'weak_passwords.txt')
+if os.path.exists(data_file):
+    static_files.append((data_file, os.path.join('brute_force', 'data')))
+
 a = Analysis(
     ['main.py'],
     pathex=[],

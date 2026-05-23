@@ -28,6 +28,10 @@ class MockCallback:
         self.events.append(("error", message))
 
 
+def _event_names(callback):
+    return [event[0] for event in callback.events]
+
+
 def test_engine_found():
     callback = MockCallback()
     engine = BruteForceEngine(worker_count=3, callback=callback)
@@ -48,6 +52,28 @@ def test_engine_found():
     assert found_event[1] == "7"
     assert found_event[2] > 0  # attempts
     assert found_event[3] >= 0  # elapsed
+
+
+def test_engine_finds_weak_dict_password():
+    callback = MockCallback()
+    engine = BruteForceEngine(worker_count=1, callback=callback)
+    engine.start("12345678")
+
+    assert "found" in _event_names(callback)
+    found_event = [e for e in callback.events if e[0] == "found"][-1]
+    assert found_event[1] == "12345678"
+    assert found_event[2] >= 7
+
+
+def test_engine_finds_digits_length_8_after_dict():
+    callback = MockCallback()
+    engine = BruteForceEngine(worker_count=1, callback=callback)
+    engine.MAX_PASSWORD_LEN = 2
+    engine.start("99")
+
+    assert "found" in _event_names(callback)
+    found_event = [e for e in callback.events if e[0] == "found"][-1]
+    assert found_event[1] == "99"
 
 
 def test_engine_get_status():
@@ -82,6 +108,8 @@ def test_engine_terminate():
 
 if __name__ == "__main__":
     test_engine_found()
+    test_engine_finds_weak_dict_password()
+    test_engine_finds_digits_length_8_after_dict()
     test_engine_get_status()
     test_engine_terminate()
     print("engine 测试全部通过")

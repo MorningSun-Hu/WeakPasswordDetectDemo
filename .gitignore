@@ -29,3 +29,4 @@ uv.lock
 
 # Worker logs
 worker_*.log
+worker_thread_*.log

@@ -1,6 +1,6 @@
-# 弱口令枚举暴力破解演示程序
+# 弱口令枚举暴力破解演示程序 v1.0.1
 
-使用 Python 3.13 Free-threading 版本实现的多线程弱口令枚举暴力破解演示程序。
+使用 Python 3.13 Free-threading 版本实现的弱口令枚举暴力破解演示程序。
 支持 Windows 7/10/11 运行，提供 Web 图形界面和 CLI 命令行两种模式。
 
 ## 功能特性
@@ -12,6 +12,15 @@
 - **实时进度显示**：各 Worker 尝试次数、当前规则、累计耗时
 - **高精度计时**：微秒级精度显示
 - **Windows 打包**：一键打包为独立 exe，无需安装 Python 即可运行
+
+## 当前状态
+
+- 当前版本：`v1.0.1`
+- Web 标题和 CLI 标题已显示版本号
+- 弱口令库 `weak_passwords.txt` 已纳入 Windows PyInstaller 打包产物
+- 动态任务队列已修复规则切换时机，当前规则会等待活跃 Worker 全部完成后再切换下一规则
+- 成功命中后，Worker 会优雅退出并尽量先回写本地尝试次数，Web 端累计尝试次数更接近真实值
+- Worker 日志已拆分为独立文件，线程模式使用 `worker_thread_<id>.log`，进程模式使用 `worker_<pid>_<id>.log`
 
 ## 环境要求
 
@@ -110,6 +119,28 @@ weak-password-bruteforce/
 打包完成后，可执行文件位于 `dist\WeakPasswordBruteForce.exe`。
 该 exe 文件内置 Python 运行时，用户无需安装 Python 即可直接运行。
 
+## 最近修复
+
+### 1. 弱口令库阶段被跳过
+
+- 原因：Windows 打包产物未包含 `brute_force/data/weak_passwords.txt`
+- 修复：`bruteforce.spec` 已加入数据文件打包配置
+
+### 2. 纯数字阶段末尾长度被提前切走
+
+- 原因：最后一个长度任务刚被分配后，调度器提前切换到下一规则
+- 修复：新增当前规则活跃 Worker 计数，所有活跃 Worker 完成后再切换规则
+
+### 3. Web 端累计尝试次数偏小
+
+- 原因：成功后直接强制终止 Worker，部分本地计数未来得及 flush 到共享状态
+- 修复：引擎结束阶段改为优雅等待 Worker 自然退出并回写计数
+
+### 4. 日志看起来像有 Worker 没领到任务
+
+- 原因：线程模式多个 Worker 共写一个日志文件，内容会互相穿插
+- 修复：每个 Worker 单独输出自己的日志文件
+
 ### 手动打包
 
 ```bash
@@ -169,6 +200,18 @@ uv run --python 3.13t tests/test_enum_rules.py
 uv run --python 3.13t tests/test_shared_state.py
 uv run --python 3.13t tests/test_engine.py
 ```
+
+## 调试与日志
+
+- 线程模式日志文件：`worker_thread_<id>.log`
+- 进程模式日志文件：`worker_<pid>_<id>.log`
+- 日志重点关注以下关键字：
+  - `processing weak dict`
+  - `processing rule`
+  - `FOUND PASSWORD`
+  - `Flushed`
+  - `termination requested, exiting`
+- 如果需要验证弱口令库是否生效，优先测试 `12345678`
 
 ## 注意事项
 

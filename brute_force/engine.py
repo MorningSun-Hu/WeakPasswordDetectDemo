@@ -116,6 +116,8 @@ class BruteForceEngine:
                 self._notify_progress()
 
         # 任务结束处理
+        self.manager.wait_for_completion()
+
         if self.use_multiprocessing:
             if not self.shared_state.end_time.value:
                 self.shared_state.end_time.value = time.time()

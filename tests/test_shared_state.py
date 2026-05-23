@@ -81,6 +81,48 @@ def test_thread_safety():
     assert state.get_total_attempts() == 30000
 
 
+def test_dict_rule_completes_before_next_rule():
+    state = create_shared_state(3, use_multiprocessing=False)
+    state.set_dict_total(10)
+
+    first = state.get_next_task(worker_count=3, max_len=8)
+    assert first[0] == 0
+
+    waiting = state.get_next_task(worker_count=3, max_len=8)
+    assert waiting == (0, -1, -1)
+
+    state.dict_active_workers -= 1
+    next_task = state.get_next_task(worker_count=3, max_len=8)
+    assert next_task == (1, 1, 1)
+
+
+def test_enum_rule_completes_before_next_rule():
+    state = create_shared_state(3, use_multiprocessing=False)
+    state.set_dict_total(0)
+
+    first_enum = state.get_next_task(worker_count=3, max_len=2)
+    second_enum = state.get_next_task(worker_count=3, max_len=2)
+    assert first_enum == (1, 1, 1)
+    assert second_enum == (1, 2, 2)
+
+    waiting = state.get_next_task(worker_count=3, max_len=2)
+    assert waiting == (0, -1, -1)
+
+    state.rule_active_workers -= 1
+    still_waiting = state.get_next_task(worker_count=3, max_len=2)
+    assert still_waiting == (0, -1, -1)
+
+    state.rule_active_workers -= 1
+    next_rule = state.get_next_task(worker_count=3, max_len=2)
+    assert next_rule == (2, 1, 1)
+
+
+def test_terminated_state_returns_exit_signal():
+    state = create_shared_state(3, use_multiprocessing=False)
+    state.terminate()
+    assert state.get_next_task(worker_count=3, max_len=8) == (None, -1, -1)
+
+
 if __name__ == "__main__":
     test_initial_state()
     test_set_and_get_found_password()
@@ -89,4 +131,7 @@ if __name__ == "__main__":
     test_terminate()
     test_elapsed_time()
     test_thread_safety()
+    test_dict_rule_completes_before_next_rule()
+    test_enum_rule_completes_before_next_rule()
+    test_terminated_state_returns_exit_signal()
     print("shared_state 测试全部通过")
