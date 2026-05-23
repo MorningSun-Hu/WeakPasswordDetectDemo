@@ -6,14 +6,15 @@
 
 import asyncio
 import sys
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from brute_force.schemas import StartRequest, StartResponse, StatusResponse, StopResponse, ResultResponse
 from brute_force.engine import BruteForceEngine
@@ -49,9 +50,15 @@ def _run_engine(engine: BruteForceEngine, password: str, loop, lock) -> None:
     try:
         engine.start(password)
     finally:
-        # 引擎结束后释放锁（需通过 call_soon_threadsafe 回到主线程释放 asyncio.Lock）
-        # 使用 lock.locked() 检查避免与 stop_crack 中的 release 冲突导致 RuntimeError
-        loop.call_soon_threadsafe(lambda: lock.release() if lock.locked() else None)
+        # 引擎结束后清理状态并释放锁
+        def _cleanup():
+            # 清理全局状态，确保下次可以正常启动
+            _app_state["engine"] = None
+            _app_state["callback"] = None
+            # 释放锁（检查是否仍被持有，避免 RuntimeError）
+            if lock.locked():
+                lock.release()
+        loop.call_soon_threadsafe(_cleanup)
 
 
 @asynccontextmanager
@@ -87,6 +94,16 @@ app.add_middleware(
 # 挂载静态文件目录
 if STATIC_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="assets")
+
+
+# 全局异常处理器：确保 API 始终返回 JSON 而非 HTML 错误页面
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """捕获所有未处理异常，返回 JSON 格式的错误响应"""
+    return JSONResponse(
+        status_code=500,
+        content={"error": "服务器内部错误", "detail": str(exc)}
+    )
 
 
 @app.get("/")

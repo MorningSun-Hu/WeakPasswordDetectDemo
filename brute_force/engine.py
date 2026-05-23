@@ -1,6 +1,7 @@
 """核心枚举引擎
 
 根据 CPU 物理核心数自动选择多进程或多线程模式。
+所有worker同时处理同一规则，按长度/行数分段领取任务，完成后自动进入下一规则。
 """
 
 import glob
@@ -11,10 +12,12 @@ import sys
 from brute_force.shared_state import create_shared_state
 from brute_force.process_manager import ProcessManager
 from brute_force.thread_manager import ThreadManager
+from brute_force.enum_rules import RULE_NAMES, count_weak_dict, RULE_WEAK_DICT
 
 
 class BruteForceEngine:
     PROGRESS_INTERVAL = 0.5
+    MAX_PASSWORD_LEN = 8
 
     def __init__(self, worker_count: int = 0, callback=None):
         self._setup_hardware_config(worker_count)
@@ -56,10 +59,16 @@ class BruteForceEngine:
                 self.worker_count = max(1, self.physical_cores - 1)
 
     def start(self, target_password: str) -> None:
-        # 清理旧的 worker 日志，只保留本次运行的
         self._cleanup_old_logs()
         
+        # 先重置状态（清零），再设置字典信息
+        # 重要：reset必须在set_dict_total之前调用，否则字典状态会被清零
         self.shared_state.reset(worker_count=self.worker_count)
+        
+        # 统计弱口令库并设置
+        dict_total = count_weak_dict()
+        self.shared_state.set_dict_total(dict_total)
+        
         if self.use_multiprocessing:
             self.shared_state.start_time.value = time.time()
         else:
@@ -75,7 +84,7 @@ class BruteForceEngine:
 
         # 启动 Worker
         try:
-            self.manager.spawn_workers(target_password, self.worker_count)
+            self.manager.spawn_workers(target_password, self.worker_count, self.MAX_PASSWORD_LEN)
         except Exception as e:
             print("启动 Worker 失败:", e)
             self._running = False
@@ -85,16 +94,7 @@ class BruteForceEngine:
         while self._running:
             time.sleep(self.PROGRESS_INTERVAL)
 
-            # 检查 Worker 是否还活着
-            if not self.manager.is_running():
-                self._running = False
-                break
-
-            # 推送进度
-            if self.callback:
-                self._notify_progress()
-
-            # 检查是否已找到密码
+            # 检查是否已找到密码（优先级最高）
             if self.use_multiprocessing:
                 if self.shared_state.found.value:
                     self._running = False
@@ -105,6 +105,15 @@ class BruteForceEngine:
                     self._running = False
                     self.shared_state.end_time = time.time()
                     break
+
+            # 检查 Worker 是否还活着
+            if not self.manager.is_running():
+                self._running = False
+                break
+
+            # 推送进度
+            if self.callback:
+                self._notify_progress()
 
         # 任务结束处理
         if self.use_multiprocessing:
@@ -141,15 +150,16 @@ class BruteForceEngine:
         self.shared_state.resume()
 
     def get_status(self) -> dict:
+        current_rule_id = self.shared_state.get_current_rule()
+        rule_name = RULE_NAMES.get(current_rule_id, "未知")
+        
         workers = []
         for i in range(self.worker_count):
             if self.use_multiprocessing:
                 attempts = self.shared_state.attempts[i].value
-                rule_id = self.shared_state.current_rule[i].value
             else:
                 attempts = self.shared_state.attempts[i]
-                rule_id = self.shared_state.current_rule[i]
-            workers.append({"id": i, "attempts": attempts, "rule_id": rule_id})
+            workers.append({"id": i, "attempts": attempts, "rule_id": current_rule_id})
         
         found_status = self.shared_state.found.value if self.use_multiprocessing else self.shared_state.found
         return {
@@ -158,7 +168,8 @@ class BruteForceEngine:
             "workers": workers,
             "total_attempts": self.shared_state.get_total_attempts(),
             "elapsed": self.shared_state.get_elapsed(),
-            "mode": "process" if self.use_multiprocessing else "thread"
+            "mode": "process" if self.use_multiprocessing else "thread",
+            "rule_name": rule_name,
         }
 
     def _notify_progress(self) -> None:

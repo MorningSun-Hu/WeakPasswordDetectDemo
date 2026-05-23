@@ -5,7 +5,7 @@
 
 import threading
 
-from brute_force.worker import worker_thread, assign_rules
+from brute_force.worker import worker_thread
 
 
 class ThreadManager:
@@ -13,13 +13,12 @@ class ThreadManager:
         self.shared_state = shared_state
         self.threads = []
 
-    def spawn_workers(self, target: str, worker_count: int) -> list:
+    def spawn_workers(self, target: str, worker_count: int, max_len: int = 8) -> list:
         self.threads = []
         for i in range(worker_count):
-            rule_ids = assign_rules(i, worker_count)
             thread = threading.Thread(
                 target=worker_thread,
-                args=(i, target, self.shared_state, rule_ids),
+                args=(i, target, self.shared_state, worker_count, max_len),
                 daemon=True,
             )
             self.threads.append(thread)

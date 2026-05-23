@@ -16,22 +16,17 @@ if (-Not (Get-Command uv -ErrorAction SilentlyContinue)) {
 }
 
 # 检查 Python 3.13 free-threading
-Write-Host "[1/5] 检查 Python 3.13 free-threading..."
+Write-Host "[1/4] 检查 Python 3.13 free-threading..."
 uv python install 3.13t
 Write-Host ""
 
 # 安装依赖
-Write-Host "[2/5] 安装项目依赖（包含 websockets）..."
+Write-Host "[2/4] 安装项目依赖..."
 uv sync --python 3.13t
 Write-Host ""
 
-# 安装 PyInstaller
-Write-Host "[3/5] 安装打包工具 PyInstaller..."
-uv add --python 3.13t pyinstaller
-Write-Host ""
-
 # 执行打包
-Write-Host "[4/5] 执行打包 (使用 spec 文件)..."
+Write-Host "[3/4] 执行打包 (使用 spec 文件)..."
 uv run --python 3.13t pyinstaller --clean bruteforce.spec
 
 if (-Not $?) {
@@ -42,7 +37,7 @@ if (-Not $?) {
 
 # 检查结果
 Write-Host ""
-Write-Host "[5/5] 打包完成!"
+Write-Host "[4/4] 打包完成!"
 Write-Host ""
 Write-Host "可执行文件位置: dist\WeakPasswordBruteForce.exe"
 Write-Host ""
