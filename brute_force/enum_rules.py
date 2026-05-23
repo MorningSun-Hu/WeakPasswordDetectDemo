@@ -1,15 +1,13 @@
 """枚举规则生成器模块
 
-按需求定义的顺序生成密码候选：
-  a. 1位到8位纯数字
-  b. 1位到8位纯小写字母
-  c. 1位到8位纯大写字母
-  d. 1位到8位大小写混合字母
-  e. 1位英文字母（先小写后大写）开头 + 1位到8位数字
-  f. 1位到8位数字 + 1位字母结尾
-  g. 1位到8位数字+小写英文字母混合
-  h. 1位到8位数字+大写英文字母混合
-  i. 1位到8位数字+大小写英文字母混合
+按需求定义的顺序生成密码候选（7种规则，互不重叠）：
+  1. 纯数字 (仅数字 0-9)
+  2. 纯小写字母 (仅 a-z)
+  3. 纯大写字母 (仅 A-Z)
+  4. 大小写混合字母 (a-z + A-Z，至少各1个)
+  5. 数字+小写全混合 (0-9 + a-z，至少各1个)
+  6. 数字+大写全混合 (0-9 + A-Z，至少各1个)
+  7. 数字+大小写全混合 (0-9 + a-z + A-Z，三种字符至少各1个)
 """
 
 import itertools
@@ -29,11 +27,9 @@ RULE_DIGITS = 1
 RULE_LOWER_ALPHA = 2
 RULE_UPPER_ALPHA = 3
 RULE_MIXED_ALPHA = 4
-RULE_LETTER_PREFIX_DIGIT = 5
-RULE_DIGIT_LETTER_SUFFIX = 6
-RULE_MIXED_LOWER = 7
-RULE_MIXED_UPPER = 8
-RULE_MIXED_ALL = 9
+RULE_MIXED_DIGIT_LOWER = 5
+RULE_MIXED_DIGIT_UPPER = 6
+RULE_MIXED_ALL = 7
 
 # 规则名称映射
 RULE_NAMES = {
@@ -41,10 +37,8 @@ RULE_NAMES = {
     RULE_LOWER_ALPHA: "纯小写字母",
     RULE_UPPER_ALPHA: "纯大写字母",
     RULE_MIXED_ALPHA: "大小写混合字母",
-    RULE_LETTER_PREFIX_DIGIT: "字母开头+数字",
-    RULE_DIGIT_LETTER_SUFFIX: "数字+字母结尾",
-    RULE_MIXED_LOWER: "数字+小写混合",
-    RULE_MIXED_UPPER: "数字+大写混合",
+    RULE_MIXED_DIGIT_LOWER: "数字+小写混合",
+    RULE_MIXED_DIGIT_UPPER: "数字+大写混合",
     RULE_MIXED_ALL: "数字+大小写混合",
 }
 
@@ -82,49 +76,38 @@ def generate_upper_alpha(min_len: int = 1, max_len: int = 8):
 def generate_mixed_alpha(min_len: int = 1, max_len: int = 8):
     """生成 1位到8位大小写混合字母
 
-    顺序: a, b, ..., z, A, B, ..., Z, aa, ab, ..., ZZ, ...
+    约束：至少包含1个小写和1个大写
+    排除：纯小写、纯大写
     """
     for length in range(min_len, max_len + 1):
+        if length < 2:
+            continue  # 至少2位才可能同时包含大小写
         for combo in itertools.product(LETTERS, repeat=length):
-            yield "".join(combo)
+            has_lower = any(c in LOWERCASE for c in combo)
+            has_upper = any(c in UPPERCASE for c in combo)
+            if has_lower and has_upper:
+                yield "".join(combo)
 
 
-def generate_letter_prefix_digit(min_dlen: int = 1, max_dlen: int = 8):
-    """生成字母开头+数字
-
-    字母顺序：先小写后大写 (a-z, A-Z)
-    数字部分：1位到8位
-    例如: a0, a1, ..., a9, aa0, ... z99999999, A0, ..., Z99999999
-    """
-    for letter in LETTERS:
-        for dlen in range(min_dlen, max_dlen + 1):
-            for combo in itertools.product(DIGITS, repeat=dlen):
-                yield letter + "".join(combo)
-
-
-def generate_digit_letter_suffix(min_dlen: int = 1, max_dlen: int = 8):
-    """生成数字+字母结尾
-
-    数字部分：1位到8位
-    字母顺序：先小写后大写
-    例如: 0a, 1a, ..., 9z, 00a, ..., 99999999z
-    """
-    for dlen in range(min_dlen, max_dlen + 1):
-        for combo in itertools.product(DIGITS, repeat=dlen):
-            digit_part = "".join(combo)
-            for letter in LETTERS:
-                yield digit_part + letter
-
-
-def generate_mixed(min_len: int = 1, max_len: int = 8, charset=None):
+def generate_mixed(min_len: int = 1, max_len: int = 8, charset=None, require_types=None):
     """生成指定字符集的混合密码
 
-    charset: 字符集列表，默认使用数字+小写字母
+    charset: 字符集列表
+    require_types: 列表，指定必须出现的字符子集类别
+                   例如: [DIGITS, LOWERCASE] 表示必须至少包含1个数字和1个小写
     """
     if charset is None:
         charset = ALPHANUM_LOWER
+    
     for length in range(min_len, max_len + 1):
+        if require_types and length < len(require_types):
+            continue  # 长度不足以保证每种类型至少出现一次
+        
         for combo in itertools.product(charset, repeat=length):
+            if require_types:
+                # 检查是否每种类型都至少出现一次
+                if not all(any(c in req_set for c in combo) for req_set in require_types):
+                    continue
             yield "".join(combo)
 
 
@@ -139,11 +122,15 @@ def get_rule_generator(rule_id: int):
         RULE_LOWER_ALPHA: lambda: generate_lower_alpha(),
         RULE_UPPER_ALPHA: lambda: generate_upper_alpha(),
         RULE_MIXED_ALPHA: lambda: generate_mixed_alpha(),
-        RULE_LETTER_PREFIX_DIGIT: lambda: generate_letter_prefix_digit(),
-        RULE_DIGIT_LETTER_SUFFIX: lambda: generate_digit_letter_suffix(),
-        RULE_MIXED_LOWER: lambda: generate_mixed(charset=ALPHANUM_LOWER),
-        RULE_MIXED_UPPER: lambda: generate_mixed(charset=ALPHANUM_UPPER),
-        RULE_MIXED_ALL: lambda: generate_mixed(charset=ALPHANUM_ALL),
+        RULE_MIXED_DIGIT_LOWER: lambda: generate_mixed(
+            charset=ALPHANUM_LOWER, require_types=[DIGITS, LOWERCASE]
+        ),
+        RULE_MIXED_DIGIT_UPPER: lambda: generate_mixed(
+            charset=ALPHANUM_UPPER, require_types=[DIGITS, UPPERCASE]
+        ),
+        RULE_MIXED_ALL: lambda: generate_mixed(
+            charset=ALPHANUM_ALL, require_types=[DIGITS, LOWERCASE, UPPERCASE]
+        ),
     }
     return generators.get(rule_id)
 
@@ -155,9 +142,7 @@ def get_all_rule_ids():
         RULE_LOWER_ALPHA,
         RULE_UPPER_ALPHA,
         RULE_MIXED_ALPHA,
-        RULE_LETTER_PREFIX_DIGIT,
-        RULE_DIGIT_LETTER_SUFFIX,
-        RULE_MIXED_LOWER,
-        RULE_MIXED_UPPER,
+        RULE_MIXED_DIGIT_LOWER,
+        RULE_MIXED_DIGIT_UPPER,
         RULE_MIXED_ALL,
     ]

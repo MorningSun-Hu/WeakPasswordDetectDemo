@@ -1111,10 +1111,12 @@
         function getRuleName(ruleId) {
             const ruleMap = {
                 1: '纯数字',
-                2: '字母开头+数字',
-                3: '数字+字母结尾',
-                4: '数字+小写混合',
-                5: '数字+大小写混合'
+                2: '纯小写字母',
+                3: '纯大写字母',
+                4: '大小写混合字母',
+                5: '数字+小写混合',
+                6: '数字+大写混合',
+                7: '数字+大小写混合'
             };
             return ruleMap[ruleId] || '未知';
         }
@@ -1263,7 +1265,7 @@
                     const modeText = status.mode === 'process' ? '多进程' : '多线程';
                     document.getElementById('status-mode').textContent = `运行模式: ${modeText} | 并发数: ${status.workers.length}`;
                     document.getElementById('status-workers').textContent = `Worker 状态: ${status.workers.length}/${status.workers.length} 运行中`;
-                    document.getElementById('status-rule').textContent = '当前规则: 纯数字';
+                    document.getElementById('status-rule').textContent = `当前规则: ${getRuleName(1)}`;
                     document.getElementById('status-speed').textContent = '速度: --';
                 }
             } catch (e) {
