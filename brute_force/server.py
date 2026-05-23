@@ -78,7 +78,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="弱口令破解演示 API",
     description="提供暴力破解任务的 REST API 与 WebSocket 实时推送",
-    version="1.0.0",
+    version="1.0.1",
     lifespan=lifespan,
 )
 

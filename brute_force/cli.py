@@ -66,7 +66,7 @@ class CLIUI:
         
         lines = [
             "=" * 50,
-            "  弱口令枚举暴力破解演示",
+            "  弱口令枚举暴力破解演示 v1.0.1",
             "=" * 50,
             "运行模式: %s | 物理核心: %d | 并发数: %d" % (mode_str, cpu_count, worker_count),
             "目标密码: %s 位" % ("*" * target_length),
@@ -152,7 +152,7 @@ class CLIUI:
 def run_cli() -> None:
     # 初始欢迎界面
     clear_screen()
-    print("弱口令枚举暴力破解演示程序")
+    print("弱口令枚举暴力破解演示程序 v1.0.1")
     print("Python 3.13 Free-threading 版本")
     print()
 
