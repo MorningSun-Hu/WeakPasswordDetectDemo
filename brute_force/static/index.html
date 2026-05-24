@@ -1002,6 +1002,9 @@
             const modeText = data.mode === 'process' ? '多进程' : '多线程';
             document.getElementById('status-mode').textContent = `运行模式: ${modeText} | 并发数: ${data.worker_count}`;
             document.getElementById('status-workers').textContent = `Worker 状态: ${data.worker_count}/${data.worker_count} 运行中`;
+            document.getElementById('status-speed').textContent = '速度: --';
+            lastTotalAttempts = 0;
+            lastStatusTime = Date.now();
         }
         
         /**
@@ -1026,14 +1029,20 @@
             // 计算速度
             const now = Date.now();
             const elapsed = (now - lastStatusTime) / 1000;
-            if (elapsed >= 0.5 && lastTotalAttempts > 0) {
-                const attemptsDiff = attempts - lastTotalAttempts;
-                const speed = Math.round(attemptsDiff / elapsed);
-                document.getElementById('status-speed').textContent = `速度: ${speed.toLocaleString()} 次/秒`;
-                
+            if (lastTotalAttempts === 0) {
                 lastTotalAttempts = attempts;
                 lastStatusTime = now;
+                return;
             }
+
+            if (elapsed > 0) {
+                const attemptsDiff = attempts - lastTotalAttempts;
+                const speed = Math.max(0, Math.round(attemptsDiff / elapsed));
+                document.getElementById('status-speed').textContent = `速度: ${speed.toLocaleString()} 次/秒`;
+            }
+
+            lastTotalAttempts = attempts;
+            lastStatusTime = now;
         }
         
         /**
@@ -1270,8 +1279,11 @@
                 if (status && status.running) {
                     const modeText = status.mode === 'process' ? '多进程' : '多线程';
                     document.getElementById('status-mode').textContent = `运行模式: ${modeText} | 并发数: ${status.workers.length}`;
-                    document.getElementById('status-workers').textContent = `Worker 状态: ${status.workers.length}/${status.workers.length} 运行中`;
-                    document.getElementById('status-rule').textContent = `当前规则: ${getRuleName(1)}`;
+                    const runningWorkers = status.workers.filter(w => w.attempts > 0).length;
+                    document.getElementById('status-workers').textContent = `Worker 状态: ${runningWorkers}/${status.workers.length} 运行中`;
+                    const currentRuleId = status.workers.length > 0 ? status.workers[0].rule_id : 0;
+                    document.getElementById('status-rule').textContent = `当前规则: ${getRuleName(currentRuleId)}`;
+                    document.getElementById('cracking-attempts').textContent = `累计尝试 ${(status.total_attempts || 0).toLocaleString()} 次`;
                     document.getElementById('status-speed').textContent = '速度: --';
                 }
             } catch (e) {
@@ -1284,41 +1296,6 @@
             
             lastTotalAttempts = 0;
             lastStatusTime = Date.now();
-            
-            // 启动定时更新
-            if (statusUpdateInterval) clearInterval(statusUpdateInterval);
-            statusUpdateInterval = setInterval(updateWorkStatus, 500);
-        }
-        
-        /**
-         * 更新工作状态显示
-         */
-        function updateWorkStatus() {
-            // 如果已暂停，不更新
-            if (crackTimer.isPaused) return;
-            
-            const now = Date.now();
-            const elapsed = (now - lastStatusTime) / 1000; // 秒
-            if (elapsed < 0.5) return;
-            
-            // 模拟尝试次数增长（后续会从后端获取真实数据）
-            const currentAttempts = parseInt(document.getElementById('cracking-attempts').textContent.replace(/[^0-9]/g, '')) || 0;
-            const attemptsDiff = currentAttempts - lastTotalAttempts;
-            const speed = Math.round(attemptsDiff / elapsed);
-            
-            // 更新速度显示
-            document.getElementById('status-speed').textContent = `速度: ${speed.toLocaleString()} 次/秒`;
-            
-            // 模拟规则切换（根据尝试次数）
-            let currentRule = '纯数字';
-            if (currentAttempts > 100000) currentRule = '字母开头+数字';
-            if (currentAttempts > 500000) currentRule = '数字+字母结尾';
-            if (currentAttempts > 1000000) currentRule = '数字+小写混合';
-            if (currentAttempts > 5000000) currentRule = '数字+大小写混合';
-            document.getElementById('status-rule').textContent = `当前规则: ${currentRule}`;
-            
-            lastTotalAttempts = currentAttempts;
-            lastStatusTime = now;
         }
         
         // ==================== 事件绑定 ====================
@@ -1419,9 +1396,7 @@
                     }
                     
                     // 恢复状态更新
-                    if (!statusUpdateInterval) {
-                        statusUpdateInterval = setInterval(updateWorkStatus, 500);
-                    }
+                    lastStatusTime = Date.now();
                     
                     // 切换按钮显示
                     btnPlay.classList.add('hidden');
@@ -1451,6 +1426,7 @@
                         clearInterval(statusUpdateInterval);
                         statusUpdateInterval = null;
                     }
+                    lastStatusTime = Date.now();
                     
                     // 切换按钮显示
                     btnPause.classList.add('hidden');
@@ -1478,6 +1454,7 @@
                         clearInterval(statusUpdateInterval);
                         statusUpdateInterval = null;
                     }
+                    lastStatusTime = Date.now();
                     
                     // 注意：正常情况下视图切换由 WebSocket terminated 消息触发
                     // 但为了确保即使 WebSocket 断开也能正常显示，添加备用逻辑
@@ -1520,6 +1497,8 @@
                     clearInterval(statusUpdateInterval);
                     statusUpdateInterval = null;
                 }
+                lastTotalAttempts = 0;
+                lastStatusTime = 0;
                 
                 // 重置工作状态显示
                 document.getElementById('status-mode').textContent = '运行模式: --';

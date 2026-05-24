@@ -76,6 +76,37 @@ def test_engine_finds_digits_length_8_after_dict():
     assert found_event[1] == "99"
 
 
+def test_engine_finds_two_passwords_per_rule_family():
+    cases = [
+        ("12345678", 8),
+        ("admin", 5),
+        ("42", 2),
+        ("99", 2),
+        ("ab", 2),
+        ("zz", 2),
+        ("AB", 2),
+        ("ZX", 2),
+        ("aA", 2),
+        ("bC", 2),
+        ("1a", 2),
+        ("a2", 2),
+        ("1A", 2),
+        ("B2", 2),
+        ("1aA", 3),
+        ("2bC", 3),
+    ]
+
+    for password, max_len in cases:
+        callback = MockCallback()
+        engine = BruteForceEngine(worker_count=1, callback=callback)
+        engine.MAX_PASSWORD_LEN = max_len
+        engine.start(password)
+
+        assert "found" in _event_names(callback), password
+        found_event = [e for e in callback.events if e[0] == "found"][-1]
+        assert found_event[1] == password
+
+
 def test_engine_get_status():
     engine = BruteForceEngine(worker_count=3)
     if engine.use_multiprocessing:
@@ -110,6 +141,7 @@ if __name__ == "__main__":
     test_engine_found()
     test_engine_finds_weak_dict_password()
     test_engine_finds_digits_length_8_after_dict()
+    test_engine_finds_two_passwords_per_rule_family()
     test_engine_get_status()
     test_engine_terminate()
     print("engine 测试全部通过")
